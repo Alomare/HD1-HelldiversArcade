@@ -1,0 +1,84 @@
+{
+  "obsidian": 1,
+  "id": "alomare.arcade",
+  "version": "1.0.0",
+  "name": {
+    "en": "Helldivers Arcade"
+  },
+  "description": {
+    "en": "Arcade game modes, played from the ARCADE tab of the galaxy map. Super Earth Survivors: survive waves from all three factions, collect samples and pick upgrade cards."
+  },
+  "authors": [
+    "Alomare"
+  ],
+  "scope": "expansion",
+  "min_obsidian": "1.2.0",
+  "entry": "main.lua",
+  "source": "https://github.com/Alomare/HD1-HelldiversArcade",
+  "modules": [
+    "src/rules.lua",
+    "src/rng.lua",
+    "src/hits.lua",
+    "src/xp.lua",
+    "src/upgrades.lua",
+    "src/evolve.lua",
+    "src/draft.lua",
+    "src/director.lua",
+    "src/orbs.lua",
+    "src/vacuum.lua",
+    "src/sync.lua",
+    "src/redraw.lua",
+    "src/card_anim.lua",
+    "src/seed.lua",
+    "src/atlas.lua",
+    "src/art.lua",
+    "src/native.lua",
+    "src/cards.lua",
+    "src/cards_hud.lua",
+    "src/summary.lua",
+    "src/summary_screen.lua",
+    "src/mouse.lua",
+    "src/input.lua",
+    "src/level.lua",
+    "src/alarm.lua",
+    "src/samples.lua",
+    "src/shield.lua",
+    "src/trail.lua",
+    "src/perks.lua",
+    "src/fight.lua",
+    "src/dive.lua",
+    "src/bosses.lua",
+    "src/hunter.lua",
+    "src/bombard.lua",
+    "src/battery.lua",
+    "src/grenades.lua",
+    "src/armor.lua",
+    "src/spots.lua",
+    "src/elites.lua",
+    "src/chests.lua",
+    "src/run.lua",
+    "src/loadout.lua",
+    "src/campaign.lua",
+    "src/entry.lua",
+    "src/debug.lua"
+  ],
+  "requires": [
+    "obsidian.api",
+    "alomare.betterhud"
+  ],
+  "loader_api": 1,
+  "resources": [
+    {
+      "type": "texture",
+      "name": "arcade/art/atlas",
+      "bundle": "9cf71054ea26dddf",
+      "data": "res/art.texture"
+    },
+    {
+      "type": "material",
+      "name": "arcade/art",
+      "bundle": "9cf71054ea26dddf",
+      "data": "res/art.material"
+    }
+  ]
+}
