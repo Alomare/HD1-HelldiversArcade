@@ -22,6 +22,7 @@ local fight = obsidian.module("src/fight")
 local vacuum = obsidian.module("src/vacuum")
 local cards_hud = obsidian.module("src/cards_hud")
 local bosses = obsidian.module("src/bosses")
+local drops = obsidian.module("src/drops")
 local alarm = obsidian.module("src/alarm")
 local battery = obsidian.module("src/battery")
 local grenades = obsidian.module("src/grenades")
@@ -1486,6 +1487,9 @@ function M.update()
 		return
 	end
 	update_looks(run, dt_real)
+	run.dropped = run.dropped or drops.new()
+	local ok_d, err_d = pcall(drops.update, run.dropped, dt_real, api.world)
+	if not ok_d then obsidian.log("arcade: dropped weapons: " .. tostring(err_d)) end
 	run.dt_real = dt_real
 	sync_players(run, run.choice and 0 or dt_game, dt_real)
 	pcall(grenades.update, run.grenades, dt_game)

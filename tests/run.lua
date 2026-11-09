@@ -23,7 +23,7 @@ function near(got, want, what)
 end
 
 for _, file in ipairs({ "tests/test_logic.lua", "tests/test_cards.lua", "tests/test_entry.lua", "tests/test_samples.lua", "tests/test_campaign.lua",
-	"tests/test_expansion.lua", "tests/test_bosses.lua", "tests/test_battery.lua", "tests/test_grenades.lua", "tests/test_spawns.lua", "tests/test_summary.lua", "tests/test_redraw.lua", "tests/test_evolve.lua", "tests/test_cadence.lua", "tests/test_elites.lua", "tests/test_hits.lua" }) do
+	"tests/test_expansion.lua", "tests/test_bosses.lua", "tests/test_battery.lua", "tests/test_grenades.lua", "tests/test_spawns.lua", "tests/test_summary.lua", "tests/test_redraw.lua", "tests/test_evolve.lua", "tests/test_cadence.lua", "tests/test_elites.lua", "tests/test_hits.lua", "tests/test_drops.lua" }) do
 	local tests = dofile(file)
 	for _, t in ipairs(tests) do test(file .. " " .. t[1], t[2]) end
 end

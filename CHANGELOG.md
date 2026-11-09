@@ -2,6 +2,11 @@
 
 New, changed or removed features, one line each, brief and direct. The section for a release becomes the release notes.
 
+## 1.1.0
+
+- New: a weapon dropped on the ground vanishes after a minute. Weapons in the crate of a stratagem stay.
+- Changed: needs Obsidian API 1.48.0.
+
 ## 1.0.0
 
 - New: **Super Earth Survivors**, the first arcade game mode, picked from the ARCADE tab beside Proving Grounds on the galaxy map, with the starting faction, the difficulty and the map chosen there.

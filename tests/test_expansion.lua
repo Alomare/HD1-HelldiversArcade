@@ -686,7 +686,7 @@ test("the_readme_names_the_scope_and_the_versions_needed", function()
 	local text = read("README.md")
 	eq(text:find("expansion", 1, true) ~= nil, true, "the scope")
 	eq(text:find("Obsidian 1.2.0", 1, true) ~= nil, true, "Obsidian")
-	eq(text:find("Obsidian API 1.33.1", 1, true) ~= nil, true, "Obsidian API")
+	eq(text:find("Obsidian API 1.48.0", 1, true) ~= nil, true, "Obsidian API")
 end)
 
 return T

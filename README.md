@@ -33,7 +33,7 @@ The loadout takes two stratagems beside the fixed ones. After a mission the ship
 ## Requirements
 
 - Obsidian 1.2.0 or later ([Obsidian Mod Manager](https://github.com/Alomare/ObsidianModManager))
-- Obsidian API 1.33.1 or later ([Obsidian API](https://github.com/Alomare/ObsidianAPI)), for the pause on every machine, the Shock Elite's hits on players and the elites' looks
+- Obsidian API 1.48.0 or later ([Obsidian API](https://github.com/Alomare/ObsidianAPI)), for the pause on every machine, the Shock Elite's hits on players, the elites' looks and the dropped weapons that vanish
 - Better HUD 1.14.0 or later ([Better HUD](https://github.com/Alomare/BetterHUD)), for the grenade count, the Deep Pockets meter, the Democracy Protects flash and the Ignition and Needle Rounds icons
 
 ## Multiplayer
