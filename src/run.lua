@@ -1792,7 +1792,7 @@ end
 function M.draw_bar(kit, run, x, y, w, heat_x, hud_layer, lvl, into, need)
 	native.box(kit, x, y, w, BAR.h, { thick = 0, tint = "#ffffffcc" })
 	-- From the right: the clock, the level close to it, and the bar with the samples it has and needs.
-	local heading = { font = "heading", size = 28, tracking = 1 }
+	local heading = { font = "body_large", size = 28, tracking = 1 }
 	local label = "LEVEL " .. lvl
 	local label_x = x + w - 14 - kit:measure("00:00", heading) - 14 - kit:measure(label, heading)
 	local track = label_x - 16 - (x + 14)
@@ -1805,14 +1805,14 @@ function M.draw_bar(kit, run, x, y, w, heat_x, hud_layer, lvl, into, need)
 	run.bar = run.bar or xp.bar_new()
 	local fill, pulse = xp.bar_step(run.bar, sync.team_xp(run.sync), run.dt_real or 0)
 	kit:rect(x + 16, top + 6, (track - 4) * fill, 18, xp.bar_color(pulse))
-	native.text(kit, label, label_x, y + BAR.text_y, { font = "heading", size = 28, tracking = 1, color = native.GOLD })
-	native.text(kit, clock(run.time), x + w - 14, y + BAR.text_y, { font = "heading", size = 28, tracking = 1, align = "right", color = native.WHITE })
+	native.text(kit, label, label_x, y + BAR.text_y, { font = "body_large", size = 28, tracking = 1, color = native.GOLD })
+	native.text(kit, clock(run.time), x + w - 14, y + BAR.text_y, { font = "body_large", size = 28, tracking = 1, align = "right", color = native.WHITE })
 	-- The threat, labelled Heat, on its own card just left of the bar: a pip for each step, lit as the
 	-- fight grows. Archived (rules.SHOW_HEAT).
 	if not rules.SHOW_HEAT then return end
 	kit:layer(hud_layer)
 	native.box(kit, heat_x, y, THREAT.w, BAR.h, { thick = 0, tint = "#ffffffcc" })
-	native.text(kit, "HEAT", heat_x + 14, y + 16.5, { font = "heading", size = 26, tracking = 1, color = native.WHITE })
+	native.text(kit, "HEAT", heat_x + 14, y + 16.5, { font = "body_large", size = 26, tracking = 1, color = native.WHITE })
 	local threat = director.threat(run.time / 60)
 	for i = 1, director.THREATS do
 		kit:rect(heat_x + THREAT.w - 14 - (director.THREATS - i + 1) * 16 + 4, y + 18, 12, 12, i <= threat and "#e8532f" or "#00000090")

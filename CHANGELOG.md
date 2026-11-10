@@ -10,6 +10,7 @@ New, changed or removed features, one line each, brief and direct. The section f
 - Changed: the end-of-run summary shows at once instead of 2 seconds after the end.
 - Changed: an upgrade card shows the partner icons of an evolution to the right of its badge, a fifth bigger.
 - Changed: a Bulwark elite's dome rides on the elite instead of being placed again as it walks. Anyone walks through it, and shots from outside stop on it.
+- Changed: the top bar's level and clock and the end-of-run summary use the body font instead of the title font.
 - Removed: chests.
 - Changed: an elite's health bar shows all the time, with an icon for its kind in the middle of the bar, in place of the colored glow under it and the name over it. Needs Better HUD 1.16.0.
 - Changed: needs Obsidian API 1.48.0.

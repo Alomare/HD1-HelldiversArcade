@@ -156,12 +156,12 @@ end
 local function draw_header(kit, L, view)
 	local t = L.title
 	local title = M.TITLES[view.kind] or M.TITLES.defeated
-	local opts = { font = "heading", size = 60, tracking = 3, align = "center", color = view.kind == "extracted" and GOLD or RED }
+	local opts = { font = "body_large", size = 60, tracking = 3, align = "center", color = view.kind == "extracted" and GOLD or RED }
 	native.text(kit, title, t.x, t.y, opts)
 	native.wings(kit, t.x, t.y - 6, kit:measure(title, opts) / 2 + 30, 48)
 	local items = M.header(view)
 	local label = { font = "body_large", size = 20, tracking = 2, color = DIM }
-	local value = { font = "heading", size = 30, tracking = 1, color = INK }
+	local value = { font = "body_large", size = 30, tracking = 1, color = INK }
 	local widths, total, gap = {}, 0, 80
 	for i, item in ipairs(items) do
 		widths[i] = math.max(kit:measure(item.label, label), kit:measure(item.value, value))
