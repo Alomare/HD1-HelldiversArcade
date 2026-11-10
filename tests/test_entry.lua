@@ -166,12 +166,31 @@ end)
 
 test("the_panels_fill_the_layout_with_even_gaps", function()
 	local L = entry.LAYOUT
-	local modes, params, preview = entry.panel_x(L)
-	eq(modes, L.left)
-	eq(params - (modes + L.mode_w), L.gap, "the first gap")
-	eq(preview - (params + L.param_w), L.gap, "the second gap, the same")
-	eq(preview + L.preview_w + L.right, L.width, "the preview, drawn from the right, meets the third")
 	eq(L.left, L.right, "the same margin on both sides")
+	for _, span in ipairs({ 1280, 1422.2, 1600, 2133.3 }) do
+		local S = entry.panels(span)
+		eq(S.modes, L.left)
+		eq(S.params - (S.modes + S.mode_w), L.gap, "the first gap at " .. span)
+		near(S.preview - (S.params + S.param_w), L.gap, "the second gap, the same")
+		near(S.preview + S.preview_w + L.right, span, "the preview, drawn from the right, meets the third")
+		near(-L.right - S.preview_w, S.preview - span, "drawn from the right edge, the same left edge")
+		-- The three keep their proportions, to the unit.
+		eq(math.abs(S.mode_w / S.preview_w - L.mode_w / L.preview_w) < 0.01, true)
+		eq(math.abs(S.param_w / S.preview_w - L.param_w / L.preview_w) < 0.01, true)
+	end
+	local S = entry.panels(1280)
+	eq(S.mode_w, L.mode_w) eq(S.param_w, L.param_w) eq(S.preview_w, L.preview_w, "at 1280, the widths as designed")
+	eq(entry.panels(1600).preview_w > L.preview_w, true, "a wider layout, wider panels")
+end)
+
+test("the_layout_is_the_galaxy_maps_box_never_wider_than_16_9", function()
+	eq(entry.span(nil), 1280, "without a gui, the design's 1280")
+	eq(entry.span({ gui_settings = { design_width = 1280 }, ui_scale_user = 1 }), 1280)
+	near(entry.span({ gui_settings = { design_width = 1280 }, ui_scale_user = 0.8 }), 1600, "a smaller UI scale, more units")
+	-- An ultrawide screen with the viewport widened: the box is still the 16:9 middle.
+	near(entry.span({ gui_settings = { design_width = 1280 }, ui_scale_user = 1, rect = { w = 3440, h = 1440 } }), 1280)
+	eq(entry.span({ ui_scale_user = 0 }), 1280, "a broken scale falls back")
+	eq(entry.span(setmetatable({}, { __index = function() error("no field") end })), 1280, "and so does a gui that throws")
 end)
 
 test("the_parameters_stack_without_overlap", function()
@@ -189,16 +208,28 @@ test("the_parameters_stack_without_overlap", function()
 	eq(P.launch > L.y, true, "inside the panel")
 end)
 
-test("the_parameters_make_room_for_the_difficulty_bar_under_its_selector", function()
+test("the_difficulty_bar_sits_inside_its_selector_under_the_value", function()
 	local L = entry.LAYOUT
 	local top = L.y + L.h - 44
+	local bh = 24 * entry.BAR_SCALE
+	eq(bh, 12, "half the game's 24")
 	local plain = entry.params_layout(top, L.y, 3, 18)
-	local P = entry.params_layout(top, L.y, 3, 18, { [2] = 24 })
+	local P = entry.params_layout(top, L.y, 3, 18, { [2] = bh })
 	eq(P.rows[1].label, plain.rows[1].label, "the rows above it stay")
-	eq(P.rows[2].box, plain.rows[2].box)
+	eq(P.rows[1].box, plain.rows[1].box)
+	eq(P.rows[2].label, plain.rows[2].label)
 	eq(plain.rows[2].bar, nil, "no bar where none is asked for")
-	eq(P.rows[2].bar + 24 <= P.rows[2].box - entry.BAR_GAP, true, "the bar under the difficulty's selector")
-	eq(P.rows[3].label + 18 < P.rows[2].bar, true, "the next label under the bar")
+	eq(plain.rows[2].box_h, entry.ROW) eq(plain.rows[2].text, plain.rows[2].box + 8, "a plain value 8 over the bottom")
+	local d = P.rows[2]
+	eq(d.box_h, 46, "the difficulty's selector: 32 and 14 more")
+	eq(d.box + d.box_h, plain.rows[2].box + entry.ROW, "the selector's top where a plain one's is")
+	eq(d.bar, d.box + 4, "the bar 4 over the selector's bottom")
+	eq(d.bar_h, 12)
+	eq(d.text, d.bar + d.bar_h + 6, "the value 6 over the bar, room for the letters that hang")
+	eq(d.box + d.box_h - d.text, entry.ROW - 8, "and as far under the top as a plain value")
+	eq(P.rows[3].label + 18 < d.box, true, "the next label under the selector")
+	-- The bar used to take 6 + 24 under the selector; inside, the selector grows 14, so 16 come back.
+	eq(plain.rows[3].label - P.rows[3].label, 14, "the rows under move down only by the selector's growth")
 	eq(P.rows[3].box + entry.ROW <= P.rows[3].label, true)
 	eq(P.refresh + entry.ROW < P.rows[3].box, true, "Refresh still under the last selector")
 	eq(plain.rows[2].label - plain.rows[3].label, 66, "without a bar, the game's spacing")
@@ -219,6 +250,9 @@ test("the_preview_puts_the_name_on_the_map_and_the_objectives_under_it", functio
 	eq(entry.MAP.w <= L.preview_w - 24, true, "the map fits the panel")
 	eq(entry.map_extent(entry.MAP.scale) <= entry.MAP.h, true, "a map turned 45 degrees fits the box's height")
 	eq(entry.map_extent(entry.MAP.scale) <= entry.MAP.w, true, "and its width")
+	-- The name in the map's top right corner, its right end 8 in from the map's right edge.
+	eq(entry.name_x(100, 360, 120), 100 + 360 - 8 - 120)
+	eq(entry.name_x(100, 360, 400), 108, "a name too long for the map starts at the left inset")
 end)
 
 test("the_scroll_arrows_have_a_column_of_their_own", function()

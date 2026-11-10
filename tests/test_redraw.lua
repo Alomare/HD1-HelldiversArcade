@@ -240,14 +240,24 @@ test("the_prompts_say_their_counts_and_go_grey_with_none_left", function()
 	eq(cards.count_label(plain, "REROLL", 3), "REROLL x3")
 end)
 
-test("the_map_shows_the_counts_on_a_strip_over_the_upgrades", function()
+test("the_map_shows_the_counts_on_a_strip_under_the_upgrades", function()
 	local kit = fake_kit()
-	local h = cards.tools_strip(kit, 100, 300, 360, 1, 0, 11, 1)
-	eq(h > 0, true)
+	local h = cards.tools_strip(kit, 100, 300, 360, 1, 0, 16, 1)
+	eq(h, cards.tools_height(16))
 	local found = {}
 	for _, t in ipairs(kit.texts) do found[t.text] = true end
 	eq(found["REROLL \195\1511"], true)
 	eq(found["BANISH \195\1510"], true)
+	-- Each count fits its half of the strip, smaller when it has to, three quarters at the least.
+	local sized = fake_kit()
+	function sized:text(text, x, y, opts) self.texts[#self.texts + 1] = { text = text, x = x, size = opts.size } end
+	cards.tools_strip(sized, 0, 0, 248, 12, 3, 16, 1)
+	for _, t in ipairs(sized.texts) do
+		eq(sized:measure(t.text, { size = t.size }) <= 124 - 16, true, t.text .. " inside its half")
+		eq(t.size >= 12, true, "no smaller than three quarters")
+	end
+	eq(sized.texts[2].x, 62, "the reroll centred in the left half (each over its shadow)")
+	eq(sized.texts[4].x, 186, "the banish in the right")
 end)
 
 return T

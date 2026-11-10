@@ -820,16 +820,45 @@ function M.place(screen)
 end
 
 -- Drawing. The panels sit where the game's mission panel does (bottom right, 96 from the edges) and
--- to the left of it, in the 1280 by 720 the galaxy map lays out in, with even gaps between them.
+-- to the left of it, with even gaps between them, across the layout the galaxy map draws in.
 
+-- The widths are those at 1280 units across: 96 + 300 + 16 + 356 + 16 + 400 + 96 = 1280.
 M.LAYOUT = { width = 1280, left = 96, right = 96, y = 106, h = 490, gap = 16, mode_w = 300, param_w = 356, preview_w = 400 }
 
--- The panels' left edges, from the left of the 1280. The preview is drawn from the right edge, as the
--- game draws its mission panel, which puts it at the third.
-function M.panel_x(L)
+-- How many units across the layout is. The galaxy map's gui centres a box of design_width * scale /
+-- ui_scale_user pixels on the screen, at `scale` pixels a unit (the QoL mod's widescreen pinning works
+-- from the same numbers), so the box is design_width / ui_scale_user units wide: 1280 at the game's
+-- UI scale 1, more at a smaller one (1600 at 0.8). On a 16:9 screen the box is the whole width. On a
+-- wider screen it stays the 16:9 middle (scale is the height's), so the panels never go past 16:9 and
+-- stay centred. "left" layouts count from the box's left edge, "right" ones from its right edge.
+function M.span(gui)
+	local base = M.LAYOUT.width
+	if type(gui) ~= "table" then return base end
+	local ok, span = pcall(function()
+		local settings = gui.gui_settings
+		local design = type(settings) == "table" and tonumber(settings.design_width) or base
+		local user = tonumber(gui.ui_scale_user) or 1
+		return design / (user > 0 and user or 1)
+	end)
+	return ok and type(span) == "number" and span > 0 and span or base
+end
+
+-- The panels across a layout `span` units wide: the margins and gaps as they are, the rest shared
+-- among the three in the proportions of their widths at 1280. Answers each one's left edge from the
+-- layout's left, and its width. The preview is drawn from the right edge, as the game draws its
+-- mission panel, so its width takes what rounding leaves and it meets the right margin exactly.
+function M.panels(span, L)
+	L = L or M.LAYOUT
+	span = span or L.width
+	local room = math.max(span - L.left - L.right - 2 * L.gap, 0)
+	local k = room / (L.mode_w + L.param_w + L.preview_w)
+	local mode_w = math.floor(L.mode_w * k + 0.5)
+	local param_w = math.floor(L.param_w * k + 0.5)
+	local preview_w = room - mode_w - param_w
 	local modes = L.left
-	local params = modes + L.mode_w + L.gap
-	return modes, params, params + L.param_w + L.gap
+	local params = modes + mode_w + L.gap
+	return { modes = modes, params = params, preview = params + param_w + L.gap,
+		mode_w = mode_w, param_w = param_w, preview_w = preview_w, span = span }
 end
 
 M.ROW = 32 -- a list box row, as the game's lists draw them
@@ -838,18 +867,34 @@ M.LAUNCH_H = 40 -- the Launch button, a little taller than a row
 
 -- The Parameters panel's rows, from the panel's content top (below the heading) and bottom: each
 -- parameter's label and selector, and at the bottom Refresh with Launch under it. bars: { [row] =
--- height } for a row with a bar under its selector (the difficulty's), which takes that room more.
-M.BAR_GAP = 6 -- between a selector and the bar under it
+-- height } for a row whose selector holds a bar under its value (the difficulty's).
+--
+-- A selector is M.ROW (32) tall with its value's baseline TEXT_Y (8) over its bottom. One with a bar
+-- keeps that top part and grows under it: BAR_BOTTOM (4) from the selector's bottom to the bar, the
+-- bar, then BAR_TEXT (6) up to the value's baseline, room for the letters that hang under it. With the
+-- game's 24-tall bar at half size, 12: the value 22 over the bottom, the selector 46 tall, 14 more
+-- than a plain one. The bar used to sit under the selector, 6 + 24 more, so the rows under the
+-- difficulty move 16 up. Each row answers { label, box (bottom), box_h, text (the value's baseline),
+-- and with a bar: bar (its bottom), bar_h }.
+M.TEXT_Y = 8
+M.BAR_SCALE = 0.5 -- of the game's difficulty bar (CampaignSettings.difficulty_bar: 252 by 24)
+M.BAR_BOTTOM = 4
+M.BAR_TEXT = 6
+function M.bar_room(bh) return M.BAR_BOTTOM + bh + M.BAR_TEXT - M.TEXT_Y end
+
 function M.params_layout(top, bottom, count, text_size, bars)
 	local rows = {}
 	local above = top - 4 + 26 - text_size -- so the first label sits 4 under the top
 	for i = 1, count do
 		local label = above - 26
-		local r = { label = label, box = label - 8 - M.ROW }
 		local bh = bars and bars[i]
-		if bh then r.bar, r.bar_h = r.box - M.BAR_GAP - bh, bh end
+		local extra = bh and M.bar_room(bh) or 0
+		local r = { label = label, box_h = M.ROW + extra }
+		r.box = label - 8 - r.box_h
+		r.text = r.box + M.TEXT_Y + extra
+		if bh then r.bar, r.bar_h = r.box + M.BAR_BOTTOM, bh end
 		rows[i] = r
-		above = r.bar or r.box
+		above = r.box
 	end
 	local launch = bottom + 16
 	return { rows = rows, launch = launch, refresh = launch + M.LAUNCH_H + 10 }
@@ -863,8 +908,14 @@ M.MAP = { w = 360, h = 300, scale = 0.95 }
 function M.map_extent(scale) return 220 * math.sqrt(2) * scale end
 
 -- The Mission Preview panel, from the content top and the panel's bottom: the map, with the planet's
--- name in its top left corner, and the objective list in the room left. y of each is its bottom.
-M.NAME_INSET = 8 -- the name's distance from the map's top left corner
+-- name in its top right corner, and the objective list in the room left. y of each is its bottom.
+M.NAME_INSET = 8 -- the name's distance from the map's top right corner
+
+-- Where the planet's name starts on a map from x, w wide: its right end NAME_INSET in from the map's
+-- right edge, and a name too long for that starts at the left inset instead.
+function M.name_x(x, w, text_w)
+	return math.max(x + w - M.NAME_INSET - (tonumber(text_w) or 0), x + M.NAME_INSET)
+end
 function M.preview_layout(top, bottom, text_size)
 	local map_top = top - 4
 	local map_bottom = map_top - M.MAP.h
@@ -979,8 +1030,8 @@ end
 
 function M.draw_modes(screen, gui, z, dt, ui, sample)
 	local L = M.LAYOUT
-	local x = M.panel_x(L)
-	local y, w, h = L.y, L.mode_w, L.h
+	local S = M.panels(M.span(gui))
+	local x, y, w, h = S.modes, L.y, S.mode_w, L.h
 	screen:draw_main_panel(gui, z, false, v3(x, y, z), h, w, "left", "bottom", 1)
 	gui:begin_layout(nil, nil, "left", "bottom")
 	local top = heading(gui, x, y, w, h, z, M.cased(M.PANELS[1], sample))
@@ -1029,22 +1080,26 @@ function M.value_of(key, v)
 end
 
 -- The game's difficulty bar (MenuScreenCampaignMission.show_mission_info), its colored cells only: the
--- cells up to the level, from the left of a bar centred on cx, with the bottom at y.
-local function difficulty_bar(gui, cx, y, z, level)
+-- cells up to the level, from the left of a bar centred on cx, with the bottom at y, `k` times the
+-- game's size (M.BAR_SCALE inside the selector: 126 by 12 of the game's 252 by 24).
+local function difficulty_bar(gui, cx, y, z, level, k)
 	local bar = g("CampaignSettings").difficulty_bar
+	k = k or 1
 	local size = v2(bar.size[1], bar.size[2])
 	local cells = bar.cells
 	level = math.max(1, math.min(level, #cells))
-	local x = cx - size.x / 2
+	local x = cx - size.x * k / 2
 	local right = cells[level].x + cells[level].width
-	gui:draw_texture("bar_difficulty", v3(x + cells[1].x, y, z), v2(right - cells[1].x, size.y), "uv", { v2(cells[1].x / size.x, 0.5), v2(right / size.x, 1) })
+	gui:draw_texture("bar_difficulty", v3(x + cells[1].x * k, y, z), v2((right - cells[1].x) * k, size.y * k), "uv", { v2(cells[1].x / size.x, 0.5), v2(right / size.x, 1) })
 end
 
--- The difficulty bar's height, or nil without the game's settings for it.
+-- The difficulty bar's height as the selector holds it (M.BAR_SCALE of the game's), or nil without
+-- the game's settings for it.
 local function bar_height()
 	local cs = g("CampaignSettings")
 	local bar = type(cs) == "table" and cs.difficulty_bar
-	return type(bar) == "table" and type(bar.size) == "table" and bar.size[2] or nil
+	local h = type(bar) == "table" and type(bar.size) == "table" and tonumber(bar.size[2])
+	return h and h * M.BAR_SCALE or nil
 end
 
 -- Refresh: a list box button, white, yellow under the cursor as the game's text buttons are.
@@ -1077,42 +1132,45 @@ end
 
 function M.draw_params(screen, gui, z, dt, ui, sample)
 	local L = M.LAYOUT
-	local _, x = M.panel_x(L)
-	local y, w, h = L.y, L.param_w, L.h
+	local S = M.panels(M.span(gui))
+	local x, y, w, h = S.params, L.y, S.param_w, L.h
 	screen:draw_main_panel(gui, z, false, v3(x, y, z), h, w, "left", "bottom", 1)
 	gui:begin_layout(nil, nil, "left", "bottom")
 	local top = heading(gui, x, y, w, h, z, M.cased(M.PANELS[2], sample))
 	local mode = M.MODES[ui.mode] or M.MODES[1]
 	local body = font("body")
 	local bx, bw, hover = x + 12, w - 24, nil
-	-- The difficulty's selector has the difficulty bar under it.
+	-- The difficulty's selector holds the difficulty bar under its value.
 	local bars, bh = {}, bar_height()
 	for i, key in ipairs(mode.params) do
 		if key == "difficulty" then bars[i] = bh end
 	end
 	local P = M.params_layout(top, y, #mode.params, body.font_size, bars)
 	for i, key in ipairs(mode.params) do
-		local ly, ry = P.rows[i].label, P.rows[i].box
+		local R = P.rows[i]
+		local ly, ry, rh = R.label, R.box, R.box_h
 		local selected = ui.panel == 2 and ui.row == i
 		gui:begin_template(template("body", selected and WHITE or LABEL))
 		gui:draw_text(M.cased(M.LABELS[key] or key, sample), v3(bx + 2, ly, z + 4))
 		gui:end_template()
 		gui:begin_template(template("body_large", WHITE))
-		local hot_left = over(screen, gui, bx, ry, bw / 2, M.ROW)
-		local hot_right = not hot_left and over(screen, gui, bx + bw / 2, ry, bw / 2, M.ROW)
+		local hot_left = over(screen, gui, bx, ry, bw / 2, rh)
+		local hot_right = not hot_left and over(screen, gui, bx + bw / 2, ry, bw / 2, rh)
 		if hot_left or hot_right then hover = { panel = 2, row = i, dir = hot_left and -1 or 1 } end
-		row_box(gui, bx, ry, bw, z + 1, nil, SHADE)
-		highlight(screen, gui, bx, ry, bw, z + 2, state_of(selected, hot_left or hot_right))
+		row_box(gui, bx, ry, bw, z + 1, nil, SHADE, rh)
+		highlight(screen, gui, bx, ry, bw, z + 2, state_of(selected, hot_left or hot_right), rh)
 		local text, icon = M.value_of(key, M.choice[key])
 		local tw = width(gui, text)
 		local iw = icon and 30 or 0
 		local tx = bx + bw / 2 - (tw + iw) / 2
-		if icon then gui:draw_texture(icon, v3(tx, ry + 3, z + 3), v2(26, 26)) end
-		gui:draw_text(text, v3(tx + iw, ry + 8, z + 4))
+		if icon then gui:draw_texture(icon, v3(tx, R.text - 5, z + 3), v2(26, 26)) end
+		gui:draw_text(text, v3(tx + iw, R.text, z + 4))
+		-- The arrows halfway up the selector, as tall as it or not.
 		local a = (selected or hot_left or hot_right) and 255 or 160
-		gui:draw_texture("icon_arrow_01", v3(bx + 2, ry, z + 4), v2(32, 32), "color", color(hot_left and YELLOW or WHITE, a))
-		gui:draw_texture("icon_arrow_01", v3(bx + bw - 34, ry, z + 4), v2(32, 32), "color", color(hot_right and YELLOW or WHITE, a), "uv", { v2(1, 0), v2(0, 1) })
-		if P.rows[i].bar then difficulty_bar(gui, bx + bw / 2, P.rows[i].bar, z + 3, M.choice.difficulty) end
+		local ay = ry + (rh - 32) / 2
+		gui:draw_texture("icon_arrow_01", v3(bx + 2, ay, z + 4), v2(32, 32), "color", color(hot_left and YELLOW or WHITE, a))
+		gui:draw_texture("icon_arrow_01", v3(bx + bw - 34, ay, z + 4), v2(32, 32), "color", color(hot_right and YELLOW or WHITE, a), "uv", { v2(1, 0), v2(0, 1) })
+		if R.bar then difficulty_bar(gui, bx + bw / 2, R.bar, z + 3, M.choice.difficulty, M.BAR_SCALE) end
 		gui:end_template()
 	end
 	-- Refresh, and Launch under it, at the bottom.
@@ -1166,14 +1224,14 @@ function M.list_overflow(count, room)
 end
 
 -- The previewed mission, as the game's mission panel (show_mission_info) shows one (M.preview_layout):
--- the map with the planet's name in its top left corner, and under it the objectives in the game's
+-- the map with the planet's name in its top right corner, and under it the objectives in the game's
 -- list boxes, scrolled as the game's are when they don't fit, with the scroll arrows in a column of
 -- their own beside them.
 function M.draw_preview(screen, gui, z, dt, ui, sample)
 	local L = M.LAYOUT
 	local m = screen.trials and screen.trials[screen.selected_trial_index or 1]
 	local body = font("body")
-	local w, h = L.preview_w, L.h
+	local w, h = M.panels(M.span(gui)).preview_w, L.h
 	local p = { x = -L.right - w, y = L.y }
 	screen:draw_main_panel(gui, z, false, v3(p.x, p.y, z), h, w, "right", "bottom", 1)
 	gui:begin_layout(nil, nil, "right", "bottom")
@@ -1185,9 +1243,10 @@ function M.draw_preview(screen, gui, z, dt, ui, sample)
 		if screen.map_widget then
 			screen.map_widget:update(gui, dt, z + 10, v3(p.x + w / 2, P.map_y, 0), M.MAP.scale, v2(M.MAP.w, M.MAP.h), "right", "bottom")
 		end
-		-- The planet's name over the map, with the game's drop shadow so it reads on any map.
+		-- The planet's name over the map's top right corner (the map draws its time of day at the bottom
+		-- right), with the game's drop shadow so it reads on any map.
 		gui:begin_template(template("body", WHITE))
-		local nx = x + M.NAME_INSET
+		local nx = M.name_x(x, lw, width(gui, m.name or ""))
 		gui:draw_text(m.name, v3(nx + 1, P.name - 1, z + 39), "color", rgba(200, 0, 0, 0))
 		gui:draw_text(m.name, v3(nx, P.name, z + 40))
 		gui:end_template()

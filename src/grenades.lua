@@ -4,7 +4,10 @@
 -- it. Every machine runs a grenade's explosion (ExplosiveComponent.update_slaves calls
 -- ExplosionManager.do_explosion), and the game counts a hit on the machine whose player owns it, so the
 -- thrower's machine sets off the extra blasts with the grenade's own explosion. The other machines draw
--- the same blasts from lobby data with no power, for the look and the sound.
+-- the same blasts from lobby data with no power, for the look and the sound. do_explosion plays only
+-- its explosive_info's effect and audio, which a grenade's info mostly lacks: its fireball and bang
+-- come from the grenade unit's on_explode flow. So each extra blast also plays the grenade's look
+-- (M.LOOKS).
 --
 -- Deep Pockets: more grenades carried than the game's 2, and one back every few seconds. The count is
 -- a protected field the game clamps to 2 in its own commands, so it's written through the API, and a
@@ -25,6 +28,57 @@ M.KEPT = 3
 M.FRESH = 1.5
 
 local function g(name) return rawget(_G, name) end
+
+-- What each grenade's explosion looks and sounds like: the particle effect and the sound event its
+-- unit's on_explode flow plays (ExplosiveComponent.update_slaves runs the flow, and
+-- FlowCallbacks.particle_effect_world_aligned or the surface effect manager plays the effect), read
+-- from the units' flow data in resource_packages/mission_common. Every effect here is in
+-- mission_common too, which every mission loads, and every sound is an event of the game's
+-- timpani_master. A particle effect that isn't loaded takes the game down past any pcall, so only
+-- these are ever played. The impact grenades 03 and toxic play the artillery surface effect
+-- (EffectSettings.artillery: artillery_default and game_artillery_explosion on most ground). The
+-- impact grenades 02 and incendiary have no sound in their flow: they get the hand grenade's.
+M.LOOKS = {
+	["equipment/equipment_grenade_01"] = { effect = "effects/wep_handgrenade_explosion", audio = "wep_handgrenade" },
+	["equipment/equipment_grenade_incendiary"] = { effect = "effects/wep_handgrenade_explosion_fire", audio = "wep_handgrenade" },
+	["equipment/equipment_grenade_stun"] = { effect = "effects/wep_handgrenade_explosion_stun", audio = "wep_handgrenade" },
+	["equipment/equipment_grenade_smoke"] = { effect = "effects/generated/wep_handgrenade_smoke", audio = "wep_handgrenade" },
+	["equipment/equipment_impact_grenade_01"] = { effect = "effects/wep_impactgrenade_explosion", audio = "wep_handgrenade" },
+	["equipment/equipment_impact_grenade_02"] = { effect = "effects/wep_impactgrenade_explosion", audio = "wep_handgrenade" },
+	["equipment/equipment_impact_grenade_03"] = { effect = "effects/generated/artillery_blast", audio = "game_artillery_explosion" },
+	["equipment/equipment_impact_grenade_incendiary"] = { effect = "effects/wep_grenadelauncher_incindiary", audio = "wep_handgrenade" },
+	["equipment/equipment_impact_grenade_toxic"] = { effect = "effects/surface_effects/artillery_default", audio = "game_artillery_explosion" },
+}
+M.LOOK_DEFAULT = "equipment/equipment_grenade_01"
+
+-- The look of a grenade by its unit's path: the game's own grenade's for any other.
+function M.look_of(path)
+	return M.LOOKS[path] or M.LOOKS[M.LOOK_DEFAULT]
+end
+
+-- Plays a grenade's look at `pos` ({ x, y, z }) in `world`. info: the explosive_info the game's
+-- explosion manager just played with this blast, whose own effect and audio it already played.
+function M.play_look(world, path, pos, info)
+	if not (world and pos) then return end
+	local look = M.look_of(path)
+	local played = type(info) == "table" and info or {}
+	local W, V = g("World"), g("Vector3")
+	-- Vectors last one frame, so each is made right before the engine reads it.
+	if type(played.effect) ~= "string" then pcall(W.create_particles, world, look.effect, V(pos.x, pos.y, pos.z or 0)) end
+	if type(played.audio) ~= "string" then
+		pcall(function() g("TimpaniWorld").trigger_event(W.timpani_world(world), look.audio, V(pos.x, pos.y, pos.z or 0)) end)
+	end
+end
+
+-- The mission's world, while in a mission, for the looks.
+local function look_world()
+	if not api.game.in_mission() then return nil end
+	local st = api.game.state()
+	local proxy = type(st) == "table" and st.world_proxy
+	if not proxy then return nil end
+	local ok, world = pcall(proxy.get_world, proxy)
+	return ok and world or nil
+end
 
 -- The thrown grenades: equipment/equipment_grenade_01, _incendiary, _stun, _smoke and the impact ones.
 function M.is_grenade(path)
@@ -122,6 +176,9 @@ local function blast(side, spot)
 	end)
 	side.busy = false
 	if not ok then obsidian.log("arcade: cluster blast: " .. tostring(err)) end
+	-- The fireball and the bang, which the explosion manager doesn't play for a grenade.
+	local ok_look, err_look = pcall(M.play_look, look_world(), spot.path, spot, spot.info)
+	if not ok_look then obsidian.log("arcade: cluster look: " .. tostring(err_look)) end
 end
 
 function M.update(side, dt)
@@ -155,7 +212,7 @@ function M.install(side_of, stats_of, now, draw)
 		if (stats.carpet or 0) > 0 then spots = M.with_rings(spots, stats.carpet, upgrades.CARPET_RADIUS, upgrades.CARPET_DELAY, draw) end
 		local small = M.smaller(info, upgrades.CARPET_SIZE)
 		for _, s in ipairs(spots) do
-			s.info, s.owner = s.small and small or info, owner
+			s.info, s.owner, s.path = s.small and small or info, owner, path
 			side.queue[#side.queue + 1] = s
 		end
 		M.record(side, path, spots, now())
@@ -231,7 +288,7 @@ function M.show_remote(side, ev)
 	local harmless = M.harmless(info)
 	local small = M.smaller(harmless, upgrades.CARPET_SIZE)
 	for _, s in ipairs(ev.spots) do
-		side.queue[#side.queue + 1] = { x = s.x, y = s.y, z = s.z, delay = s.delay, info = s.small and small or harmless, owner = nil }
+		side.queue[#side.queue + 1] = { x = s.x, y = s.y, z = s.z, delay = s.delay, info = s.small and small or harmless, owner = nil, path = ev.path }
 	end
 	return true
 end

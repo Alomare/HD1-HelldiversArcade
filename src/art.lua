@@ -62,6 +62,18 @@ function M.badge_height(r)
 	return r * 2.13 * M.LARGEST
 end
 
+-- How far right of its image's centre each frame's shape reaches, against the image's side
+-- (tools/build_art.py draws them in a 100 box): the circle's radius is 47, the square runs 9 to 91,
+-- the diamond's corners touch the box, the flat hexagon's corner is 49 out.
+M.REACH = { frame_circle = 0.47, frame_square = 0.41, frame_diamond = 0.5, frame_hex = 0.49 }
+
+-- How far right of its centre a badge of radius r reaches, by its rarity's frame: 58.1 for a common
+-- badge of radius 58, 50.7 rare or perk, 71.0 legendary, 66.6 evolution.
+function M.badge_reach(r, rarity)
+	local frame = M.FRAMES[rarity] or M.FRAMES.common
+	return r * 2.13 * frame[4] * (M.REACH[frame[1]] or 0.5)
+end
+
 -- An upgrade's badge: its rarity's frame in its color holding its icon, `r` from the centre to the
 -- frame's edge.
 function M.badge(kit, u, cx, cy, r, color, back, ink)

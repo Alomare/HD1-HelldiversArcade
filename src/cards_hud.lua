@@ -22,7 +22,7 @@ local M = { seen = {} }
 local DEAD = { dead = true, countdown = true, wait_for_spawn = true }
 -- A card not drawn for this long (the HUD hidden, a menu) shows nothing.
 M.STALE = 0.25
-M.GAP = 6 -- HUD units between the card's top and the upgrades' panel
+M.GAP = 6 -- HUD units between the card's top and what the map shows over it: the counts' strip, or the upgrades' panel
 M.STAT_GAP = 3 -- and the stats' panel, whose frame then clears the card's by a unit
 M.STAT_SIZE = 15 -- HUD units: the numbers' height
 M.COOLDOWN = { y = -2, size = 32 }
@@ -99,10 +99,20 @@ function M.spot(kit, c)
 		y = top + M.stat_lift(c.cooling) * u, map_y = top + M.GAP * u }
 end
 
--- The rerolls and banishes' strip over the upgrades: the text this many HUD units tall, and this far
--- above the upgrades' panel (or the card, with no upgrades yet).
-M.TOOLS_SIZE = 11
+-- The rerolls and banishes' strip, under the upgrades: its bottom GAP over the card's top, where it
+-- stays however many upgrades there are, and the upgrades' panel TOOLS_GAP over the strip. The text
+-- is TOOLS_SIZE HUD units tall (11 before, too small to read): a little over the stats' 15, 24 pixels
+-- on a 1080p screen. The strip is 1.8 times that, 28.8 units.
+M.TOOLS_SIZE = 16
 M.TOOLS_GAP = 4
+
+-- While the map is open, where the strip and the upgrades' panel go, in the kit's units, from M.spot:
+-- { tools (the strip's bottom, or nil with no strip), owned (the upgrades' bottom) }.
+function M.map_spots(s, tools)
+	if not tools then return { owned = s.map_y } end
+	local h = cards.tools_height(M.TOOLS_SIZE * s.unit)
+	return { tools = s.map_y, owned = s.map_y + h + M.TOOLS_GAP * s.unit }
+end
 
 -- players: { { unit, owned, health, max_health, armor, rerolls, banishes } } for this machine's players,
 -- the dead with no unit.
@@ -113,11 +123,11 @@ function M.draw(kit, players)
 		if c and now - c.at <= M.STALE and not DEAD[c.state] then
 			local s = M.spot(kit, c)
 			if c.state == "map" then
-				local h = cards.owned_panel(kit, s.x, s.map_y, s.w, p.owned, obsidian.module("src/upgrades"), 1, s.unit)
-				if p.rerolls or p.banishes then
-					local y = s.map_y + (h > 0 and h + M.TOOLS_GAP * s.unit or 0)
-					cards.tools_strip(kit, s.x, y, s.w, p.rerolls or 0, p.banishes or 0, M.TOOLS_SIZE * s.unit, s.unit)
+				local at = M.map_spots(s, p.rerolls ~= nil or p.banishes ~= nil)
+				if at.tools then
+					cards.tools_strip(kit, s.x, at.tools, s.w, p.rerolls or 0, p.banishes or 0, M.TOOLS_SIZE * s.unit, s.unit)
 				end
+				cards.owned_panel(kit, s.x, at.owned, s.w, p.owned, obsidian.module("src/upgrades"), 1, s.unit)
 			elseif p.max_health or p.armor then
 				kit:layer(cards.LAYER - 5)
 				cards.stat_line(kit, s.x, s.y, s.size, p.health, p.max_health, p.armor, s.unit)

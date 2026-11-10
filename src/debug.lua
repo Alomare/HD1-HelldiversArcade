@@ -1,5 +1,5 @@
 -- Super Earth Survivors' page in Obsidian API's in-game menu: a tool for testing a run. Upgrades by
--- their stacks, XP and levels, the clock (and with it the Heat), bosses, bombardments and the upgrades' own meters.
+-- their stacks, XP and levels, the clock (and with it the Heat), bosses, bombardments, elites and the upgrades' own meters.
 -- Stratagems and the rest of the player's kit are the Trainer's.
 local upgrades = obsidian.module("src/upgrades")
 local rules = obsidian.module("src/rules")
@@ -23,6 +23,12 @@ local WHY = {
 	all_spawned = "Every boss of the run has landed.",
 	not_loaded = "That faction's units aren't loaded in this mission.",
 	not_in_mission = "Only in a mission.",
+	too_early = "Elites come from 3:00. Move the clock forward first.",
+	at_most = "As many elites as the clock allows are out already.",
+	paused = "Elite spawns are paused.",
+	no_elite = "No elite is alive.",
+	no_bulwark = "No Bulwark elite is alive.",
+	no_dome = "The Bulwark dome is down already.",
 }
 
 local function said(ok, why)
@@ -94,6 +100,77 @@ local function evolutions_page(run)
 	end
 end
 
+local function title(kind) return kind:sub(1, 1):upper() .. kind:sub(2) end
+
+-- Elites (src/elites.lua): spawned round the player from the host, on a base and in a number the page
+-- keeps, plus the run's own schedule, clearing them, and the Shock and Bulwark kinds' own checks.
+local BASES = {
+	{ id = "home", label = "Mission's faction" },
+	{ id = "bugs", label = "Brood Commander (Bugs)" },
+	{ id = "cyborgs", label = "Warlord (Cyborgs)" },
+	{ id = "illuminates", label = "Council Member (Illuminates)" },
+}
+
+local function elites_page(run)
+	return function(page)
+		local elites = obsidian.module("src/elites")
+		local d = elites.debug
+		if not api.game.is_host() then
+			page:label("Only the host runs elites.")
+			return
+		end
+		page:label(function()
+			local r = run.run
+			if not r then return "Start a Survivors run to use this page." end
+			return elites.summary(elites.state, r.time)
+		end)
+
+		page:header("Spawn")
+		page:choice("Base", { choices = BASES, default = "home", get = function() return d.base end, set = function(v) d.base = v end })
+		page:number("Count", { min = 1, max = 6, step = 1, default = 1, get = function() return d.count end, set = function(v) d.count = v end })
+		page:number("Distance (metres)", { min = 4, max = 40, step = 1, default = 8, get = function() return d.distance end, set = function(v) d.distance = v end })
+		local function spawn(kind)
+			local ok, n = elites.debug_spawn(run.run, kind)
+			if ok then return "Done. " .. n .. (n == 1 and " elite" or " elites") .. " on the way." end
+			return said(false, n)
+		end
+		for _, kind in ipairs(elites.KINDS) do
+			page:action("Spawn " .. title(kind) .. " elite", function() return spawn(kind) end)
+		end
+		page:action("Spawn random elite", function() return spawn("random") end)
+
+		page:header("Schedule")
+		page:toggle("Pause elite spawns", {
+			default = false,
+			get = function() return d.paused end,
+			set = function(v) d.paused = v end,
+		})
+		page:label("A pause lasts until the run ends.")
+		page:action("Next elite now", function() return said(elites.debug_next(run.run)) end)
+		page:action("Kill every elite", function()
+			local ok, n = elites.debug_clear(run.run, true)
+			if ok then return "Done. " .. n .. " killed, with their death effects." end
+			return said(false, n)
+		end)
+		page:action("Remove every elite", function()
+			local ok, n = elites.debug_clear(run.run, false)
+			if ok then return "Done. " .. n .. " removed, with no death effects." end
+			return said(false, n)
+		end)
+
+		page:header("Shock")
+		page:label("Arcs only while a Helldiver out of the drop pod is within " .. elites.SHOCK_RANGE .. " m. Enemies take "
+			.. elites.shock_power({}) .. ", players " .. elites.shock_power({ player = true }) .. ".")
+
+		page:header("Bulwark")
+		page:action("Break Bulwark dome", function()
+			local ok, n = elites.debug_break_domes(run.run)
+			if ok then return "Done. It comes back in " .. elites.DOME_BACK .. " seconds." end
+			return said(false, n)
+		end)
+	end
+end
+
 -- run: src/run.lua.
 function M.build(run)
 	return function(page)
@@ -158,12 +235,13 @@ function M.build(run)
 			return "Done. Strikes fall for " .. bombard.DEBUG_SECONDS .. " seconds."
 		end)
 
-		-- Elites (src/elites.lua), beside the player, from the host.
-		local elites = obsidian.module("src/elites")
 		page:header("Elites")
-		for _, kind in ipairs(elites.KINDS) do
-			page:action("Spawn a " .. kind:sub(1, 1):upper() .. kind:sub(2) .. " elite", function() return said(elites.debug_spawn(run.run, kind)) end)
-		end
+		page:label(function()
+			local elites = obsidian.module("src/elites")
+			if not api.game.is_host() then return "Only the host runs elites." end
+			return run.run and elites.summary(elites.state, run.run.time) or ""
+		end)
+		page:page("Elite tools", elites_page(run))
 
 		page:header("Meters")
 		page:action("Fill Kinetic Battery", function() return said(run.fill_battery(M.player), "no_run") end)

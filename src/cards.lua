@@ -137,22 +137,27 @@ local function badge(kit, u, cx, cy, r, color)
 end
 
 -- The partner icons (src/evolve.lua's hints), each inside a thin ring of the Evolution color. A tall
--- card's sit to the right of its badge, halfway between the badge and the card's edge, in a column
--- centred on the badge's height. A wide card's text fills the space right of its badge, so there they
--- go along the bottom from the right edge leftward, on the row of the rarity's name. Answers the width
--- they take from that row: none on a tall card.
-M.HINT_R = { tall = 24.5, wide = 21.6 }
+-- card's sit to the right of its badge, centred between the badge's right edge (where the card's
+-- rarity's frame reaches, art.badge_reach) and the card's right border, in a column centred on the
+-- badge's height. On a 360 wide card with a common badge: the badge reaches 58.1 right of the card's
+-- middle, so the icons' centre is (180 + 58.1 + 360) / 2 = 299.0 from the card's left, 6.5 left of
+-- the 305.5 the biggest frame's height (71.0) gave for every rarity; 10.2 left with a rare one. A wide card's text fills the space right
+-- of its badge, so there they go along the bottom from the right edge leftward, on the row of the
+-- rarity's name. Answers the width they take from that row: none on a tall card. rarity: the card's
+-- (its badge's frame), or nil for the biggest frame.
+M.HINT_R = { tall = 26.95, wide = 21.6 } -- tall: 10% over 24.5
 M.HINT_GAP = 8
 M.HINT_EDGE = 12
 M.RARITY_BAR = 44
 M.BADGE_R = 58 -- a tall card's badge
 M.BADGE_DROP = 122 -- the badge's centre under the card's top
-function M.hint_spots(r, count)
+function M.hint_spots(r, count, rarity)
 	local rad = r.wide and M.HINT_R.wide or M.HINT_R.tall
 	local out = {}
 	if not r.wide then
 		local cx = r.x + r.w / 2
-		local edge = cx + art.badge_height(M.BADGE_R) / 2
+		local reach = rarity and art.badge_reach(M.BADGE_R, rarity) or art.badge_height(M.BADGE_R) / 2
+		local edge = cx + reach
 		local x = (edge + r.x + r.w) / 2
 		local cy = r.y + r.h - M.BADGE_DROP
 		local column = count * rad * 2 + (count - 1) * M.HINT_GAP
@@ -164,10 +169,10 @@ function M.hint_spots(r, count)
 	return out, count > 0 and count * rad * 2 + (count - 1) * M.HINT_GAP + M.HINT_EDGE or 0
 end
 
-local function draw_hints(kit, r, list)
+local function draw_hints(kit, r, list, rarity)
 	if not list or #list == 0 then return end
 	local ring = M.rarity_color("evolution")
-	for i, at in ipairs((M.hint_spots(r, #list))) do
+	for i, at in ipairs((M.hint_spots(r, #list, rarity))) do
 		local u = list[i]
 		if art.has("ring") and art.has("icon_" .. u.id) then
 			art.center(kit, "glow", at.x, at.y, at.r * 2.6, "#00000080")
@@ -247,9 +252,9 @@ function M.card(kit, r, u, owned, state, t, hints)
 	else
 		native.box(kit, r.x, r.y, r.w, r.h, CARD_BOX)
 	end
-	local _, hint_w = M.hint_spots(r, hints and #hints or 0)
+	local _, hint_w = M.hint_spots(r, hints and #hints or 0, u.rarity)
 	if r.wide then wide_card(kit, r, u, owned, color, body, now, hint_w) else tall_card(kit, r, u, owned, color, body, now, hint_w) end
-	draw_hints(kit, r, hints)
+	draw_hints(kit, r, hints, u.rarity)
 	kit:layer(z)
 end
 
@@ -453,21 +458,27 @@ function M.draw(kit, view)
 	kit:opacity(was)
 end
 
--- A player's rerolls and banishes, small, on a strip of the HUD card's panel with the bottom at y, from
--- x, w wide: over the upgrades' panel while the map is open. size: the text's height; unit as in
--- owned_panel. Answers the strip's height.
+-- A player's rerolls and banishes on a strip of the HUD card's panel with the bottom at y, from x, w
+-- wide: under the upgrades' panel while the map is open. size: the text's height; unit as in
+-- owned_panel. Each count takes half the strip, centred in it, and a count too long for its half
+-- (a long translation, a big number) gets smaller, to three quarters of size at the least. Answers
+-- the strip's height.
+M.TOOLS_PAD = 0.5 -- of size, kept clear at each end of a half
+function M.tools_height(size) return size * 1.8 end
 function M.tools_strip(kit, x, y, w, rerolls, banishes, size, unit)
-	local h = size * 1.8
+	local h = M.tools_height(size)
 	kit:layer(M.LAYER - 5)
 	native.panel(kit, x, y, w, h, { unit = unit })
 	local z = kit:layer()
 	kit:layer(z + 1)
 	local opts = { font = "body_large", size = size, color = INK }
-	local text_y = y + (h - size * 0.7) / 2
 	local half = w / 2
 	for i, item in ipairs({ { "REROLL", rerolls }, { "BANISH", banishes } }) do
-		local o = { font = "body_large", size = size, align = "center", color = (item[2] or 0) > 0 and INK or DIM }
-		native.text(kit, M.count_label(kit, item[1], item[2], opts), x + half * (i - 0.5), text_y, o)
+		local label = M.count_label(kit, item[1], item[2], opts)
+		local o = fitted(kit, label, half - 2 * size * M.TOOLS_PAD,
+			{ font = "body_large", size = size, align = "center", color = (item[2] or 0) > 0 and INK or DIM }, size * 0.75)
+		-- The figures, about 0.7 of the size tall, halfway up the strip.
+		native.text(kit, label, x + half * (i - 0.5), y + (h - o.size * 0.7) / 2, o)
 	end
 	kit:layer(z)
 	return h
@@ -521,20 +532,26 @@ local function count_text(kit, n, x, y, size)
 end
 
 -- The panel's badges: r against the width of a column. A square or circle frame is r * 2.13 across, so
--- the gap between two is what's left of the column; a diamond is 1.15 times bigger and still clears
--- the next one. PANEL_EDGE, of a column, is a margin inside the panel's frame on every side, on top of
--- the half gap round each badge.
-M.PANEL_BADGE = 0.36
+-- the gap between two side by side is what's left of the column; a diamond is 1.15 times bigger and
+-- still clears the next one (0.39 * 2.13 * 1.15 = 0.955 of a column). PANEL_EDGE, of a column, is a
+-- margin inside the panel's frame on every side, on top of the half gap round each badge.
+--
+-- On the HUD card's 248 units: edge 7.4, a column 58.3, r 22.7 (20.98 at the old 0.36), a frame 48.4
+-- across, so 9.9 between two frames side by side (13.6 before). Rows are PANEL_ROW_GAP of r apart
+-- under the frames, 8.2 (13.6 before, the side gap): room for the link marks, which hang 0.28 of r
+-- under a frame (LINK_GAP and LINK_H), and a little more.
+M.PANEL_BADGE = 0.39
 M.PANEL_EDGE = 0.12
+M.PANEL_ROW_GAP = 0.36
 
--- Where the panel's badges go, from x, w wide, the panel's top at `top`: each row a column's gap taller
--- than the frames in the row, the badges centred in it, and half a gap more between two groups, all
--- inside a margin of PANEL_EDGE. Answers r, the rows ({ items, cy }) and the height.
+-- Where the panel's badges go, from x, w wide, the panel's top at `top`: each row PANEL_ROW_GAP of r
+-- taller than the frames in the row, the badges centred in it, and half that more between two groups,
+-- all inside a margin of PANEL_EDGE. Answers r, the rows ({ items, cy }) and the height.
 function M.owned_layout(groups, x, top, w)
 	local edge = w / M.PANEL_COLUMNS * M.PANEL_EDGE
 	local cell = (w - 2 * edge) / M.PANEL_COLUMNS
 	local r = cell * M.PANEL_BADGE
-	local gap = cell - r * 2.13
+	local gap = r * M.PANEL_ROW_GAP
 	local rows, y = {}, top - edge
 	for g, list in ipairs(groups) do
 		local frame = art.FRAMES[list[1].u.rarity] or art.FRAMES.common

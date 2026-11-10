@@ -104,6 +104,94 @@ test("the_shock_reaches_the_nearest_within_range_and_not_itself", function()
 	eq(path[1].z, 1, "at body height")
 end)
 
+test("the_shock_hits_its_own_side_for_half", function()
+	local elites = load("elites", fake())
+	eq(elites.shock_power({ unit = 1 }), elites.SHOCK_ENEMY_POWER / 2, "an enemy takes half")
+	eq(elites.shock_power({ unit = 1, player = true }), elites.SHOCK_PLAYER_POWER, "a player takes the player's share")
+	eq(elites.shock_power({ unit = 1 }), 30)
+end)
+
+test("a_helldiver_landing_in_its_pod_doesnt_count", function()
+	local elites = load("elites", fake())
+	-- Where this machine owns the body: the character's state.
+	eq(elites.landing({ state = "CharacterStateCutscene", age = 99 }), true, "the intro_land cutscene")
+	eq(elites.landing({ state = "CharacterStateIdle", age = 0 }), false, "out, however new")
+	-- Another machine's body: the collision the game turns off while it lands.
+	eq(elites.landing({ collision = false }), true)
+	eq(elites.landing({ collision = true, age = 0 }), false)
+	eq(elites.landing({ collision = false, seated = true }), false, "a seat turns it off too")
+	-- Neither readable: how long the body has been seen.
+	eq(elites.landing({ age = elites.LAND_SECONDS - 0.1 }), true)
+	eq(elites.landing({ age = elites.LAND_SECONDS }), false)
+	eq(elites.landing({}), false)
+	eq(elites.counts({ player = true }), true)
+	eq(elites.counts({ player = true, landing = true }), false)
+	eq(elites.counts({ player = true, dead = true }), false)
+	eq(elites.counts({ unit = 1 }), false, "an enemy isn't a Helldiver")
+end)
+
+test("the_shock_holds_until_a_helldiver_out_of_the_pod_is_near", function()
+	local elites = load("elites", fake())
+	local me = {}
+	local at = { x = 0, y = 0, z = 0 }
+	local function p(x) return { x = x, y = 0, z = 0 } end
+	local foes = { { unit = me, pos = p(0) }, { unit = "a", pos = p(1) }, { unit = "b", pos = p(2) } }
+	local out, why = elites.shock_targets(at, foes, me)
+	eq(out, nil, "enemies alone")
+	eq(why, "no_helldiver")
+	local list = { foes[1], foes[2], foes[3], { unit = "pod", pos = p(0.5), player = true, landing = true } }
+	out, why = elites.shock_targets(at, list, me)
+	eq(out, nil, "the only Helldiver near is still landing")
+	eq(why, "landing")
+	list[#list + 1] = { unit = "far", pos = p(elites.SHOCK_RANGE + 1), player = true }
+	out, why = elites.shock_targets(at, list, me)
+	eq(out, nil, "the one out of the pod is out of range")
+	eq(why, "landing")
+	list[#list + 1] = { unit = "dead", pos = p(1.5), player = true, dead = true }
+	eq(elites.shock_targets(at, list, me), nil, "a dead one doesn't count")
+	list[#list + 1] = { unit = "diver", pos = p(3), player = true }
+	out = elites.shock_targets(at, list, me)
+	eq(#out, elites.SHOCK_TARGETS)
+	eq(out[1].unit, "a") eq(out[2].unit, "b") eq(out[3].unit, "diver")
+	for _, t in ipairs(out) do eq(t.unit ~= "pod" and t.unit ~= "dead" and t.unit ~= me, true, "never the landing, the dead or itself") end
+end)
+
+test("debug_elites_spread_round_the_player", function()
+	local elites = load("elites", fake())
+	local spots = elites.ring_spots({ x = 10, y = 20, z = 3 }, 4, 8)
+	eq(#spots, 4)
+	near(spots[1].x, 18) near(spots[1].y, 20) eq(spots[1].z, 3)
+	near(spots[3].x, 2) near(spots[3].y, 20)
+	for _, s in ipairs(spots) do near(math.sqrt((s.x - 10) ^ 2 + (s.y - 20) ^ 2), 8) end
+	near(elites.ring_spots({ x = 0, y = 0 }, 1, 8)[1].x, 8, "one goes where the old single spawn went")
+end)
+
+test("debug_summary_and_pause", function()
+	local elites = load("elites", fake())
+	local e = elites.new()
+	eq(elites.summary(e, 0), "No elites alive.")
+	e.alive[{}] = { kind = "shock", shock_why = "landing" }
+	e.alive[{}] = { kind = "bulwark", dome_lost = 10 }
+	local s = elites.summary(e, 12)
+	eq(s:find("Alive: Bulwark, Shock", 1, true) ~= nil, true, s)
+	eq(s:find("still landing", 1, true) ~= nil, true, s)
+	eq(s:find("dome back in " .. (elites.DOME_BACK - 2) .. " s", 1, true) ~= nil, true, s)
+	-- A pause holds for one run.
+	elites.debug.paused = true
+	elites.clear()
+	eq(elites.debug.paused, false)
+	-- Off the host, the page's actions answer why.
+	local api = fake(false)
+	local client = load("elites", api)
+	eq(select(2, client.debug_spawn({ local_list = {} }, "fire")), "host_only")
+	eq(select(2, client.debug_clear({}, true)), "host_only")
+	local host = load("elites", fake())
+	eq(select(2, host.debug_next({ time = 60 })), "too_early")
+	eq(select(2, host.debug_clear({}, true)), "no_elite")
+	eq(select(2, host.debug_break_domes({})), "no_bulwark")
+	eq(select(2, host.debug_spawn({ local_list = {} }, "fire")), "no_squad")
+end)
+
 test("fire_pools_follow_the_walk_and_toxic_ground_lasts", function()
 	local elites = load("elites", fake())
 	local f = {}

@@ -11,7 +11,8 @@
 --
 -- Kinds:
 --   fire     leaves the flamethrower's burning ground behind it as it moves
---   shock    arcs every SHOCK_EVERY seconds to the nearest units within SHOCK_RANGE, players and enemies
+--   shock    arcs every SHOCK_EVERY seconds to the nearest units within SHOCK_RANGE, players and enemies,
+--            while a Helldiver out of the drop pod is within SHOCK_RANGE; its own side takes half
 --   noxious  its hits poison like a Stalker's, and on death it leaves toxic ground for POOL_SECONDS
 --   bulwark  carries a shield dome on itself: units walk through, shots from outside stop on it
 --   swift    moves SWIFT_SPEED times as fast and doesn't stagger from hits
@@ -67,9 +68,14 @@ M.FIRE_UNIT = "gameobjects/gameobject_flamethrower_napalm_area" -- 1.8 m of fire
 M.SHOCK_EVERY = 1.5
 M.SHOCK_RANGE = 8
 M.SHOCK_TARGETS = 3
--- A Tesla Tower bolt is 1200 through armor: the elite's arcs are 5% of it on enemies and 1.25% on players.
+-- A Tesla Tower bolt is 1200 through armor: the elite's arcs are 5% of it, and 1.25% on players. Its own
+-- side, the other enemies, take SHOCK_ALLY_SHARE of the 5%.
 M.SHOCK_ENEMY_POWER = 60
 M.SHOCK_PLAYER_POWER = 15
+M.SHOCK_ALLY_SHARE = 0.5
+-- Seconds a new Helldiver body lands for: the character's spawn_time, the intro_land cutscene in the
+-- hellpod (characters/helldiver_private_01 character_info; character_component.lua:177-180).
+M.LAND_SECONDS = 5.4
 M.POISON = { "poison_slow", "poison_damage" } -- the Stalker's hit
 M.POOL_UNIT = "gameobjects/gameobject_toxic_area" -- the toxic impact grenade's ground, 10 seconds, in mission_common
 M.POOL_SECONDS = 30
@@ -92,11 +98,17 @@ M.ARCS_KEPT = 2
 M.ARCS_FRESH = 1.5
 
 -- The state of a run: the host's elites by unit, the kind of every elite this machine knows, the
--- host's schedule, the pools still to lay, and the arcs.
+-- host's schedule, the pools still to lay, the arcs, and when each Helldiver body was first seen (by
+-- this machine's real-time clock) with what the shock has said about its landing.
 function M.new()
 	return { next_at = nil, alive = {}, kinds = setmetatable({}, { __mode = "k" }), looks = {}, pools = {},
-		arcs = { seq = 0, events = {} }, seen_arcs = {}, share_in = 0, shared = {}, last_death = -math.huge }
+		arcs = { seq = 0, events = {} }, seen_arcs = {}, share_in = 0, shared = {}, last_death = -math.huge,
+		clock = 0, bodies = {}, landing_told = {} }
 end
+
+-- The debug page's choices (src/debug.lua), kept across runs. base: "home" for the mission's own
+-- faction, or a faction of M.UNITS. paused: the run's own schedule spawns nothing, until the run ends.
+M.debug = { base = "home", count = 1, distance = 8, paused = false }
 
 M.state = M.new()
 
@@ -262,6 +274,63 @@ function M.take_arcs(seen, peer, e, mission, now)
 	return out
 end
 
+-- What one arc does to a target of the Shock elite's list: a player takes SHOCK_PLAYER_POWER, the
+-- elite's own side SHOCK_ALLY_SHARE of SHOCK_ENEMY_POWER.
+function M.shock_power(t)
+	if t.player then return M.SHOCK_PLAYER_POWER end
+	return M.SHOCK_ENEMY_POWER * M.SHOCK_ALLY_SHARE
+end
+
+-- Whether a Helldiver body is still in its hellpod, from what this machine can read of it (info):
+--   state      the name of the character's state, where this machine owns the body: a new body
+--              lands in CharacterStateCutscene (character_component.lua:177-180), and only leaves it
+--              once the intro_land animation is over
+--   collision  the character's collision_enabled, which every machine has: the game turns it off for
+--              the landing (and for a seat, a jump, the extraction and death), and while it's off the
+--              body's damage zone is player_damage_zone_invulnerable (character_component.lua:878-960)
+--   seated     the body sits in a vehicle, which turns collision off too
+--   age        seconds since this machine first saw the body, for when neither can be read
+function M.landing(info)
+	if info.state ~= nil then return info.state == "CharacterStateCutscene" end
+	if info.collision ~= nil then return info.collision == false and not info.seated end
+	return info.age ~= nil and info.age < M.LAND_SECONDS
+end
+
+-- A Helldiver the Shock elite reacts to: alive and out of the drop pod.
+function M.counts(t)
+	return t.player == true and not t.dead and not t.landing
+end
+
+-- The Shock elite's targets from `from`: the nearest SHOCK_TARGETS of `list` ({ unit, pos, player,
+-- dead, landing }) within SHOCK_RANGE, not `self`, Helldivers only once out of the pod. Nothing at all
+-- unless such a Helldiver is in range: then nil and why, "landing" when only landing ones are.
+function M.shock_targets(from, list, self)
+	local open, helldiver, landing = {}, false, false
+	for _, t in ipairs(list) do
+		local near = #M.nearest(from, { t }, M.SHOCK_RANGE, 1, self) > 0
+		if not t.player then
+			open[#open + 1] = t
+		elseif M.counts(t) then
+			open[#open + 1] = t
+			helldiver = helldiver or near
+		elseif t.landing and not t.dead then
+			landing = landing or near
+		end
+	end
+	if not helldiver then return nil, landing and "landing" or "no_helldiver" end
+	return M.nearest(from, open, M.SHOCK_RANGE, M.SHOCK_TARGETS, self)
+end
+
+-- Where `count` elites go around `at`, `metres` off it, evenly round: the first due +x.
+function M.ring_spots(at, count, metres)
+	local out = {}
+	for i = 1, count do
+		local a = (i - 1) * 2 * math.pi / count
+		out[i] = { x = at.x + math.cos(a) * metres, y = at.y + math.sin(a) * metres, z = at.z or 0 }
+	end
+	return out
+end
+
 -- The path a star of bolts takes from the elite to each target and back, at body height.
 function M.arc_path(from, targets)
 	local up = function(p) return { x = p.x, y = p.y, z = (p.z or 0) + 1 } end
@@ -383,12 +452,71 @@ local function spawn_due(e, run, squad, factions, draw)
 	obsidian.log("arcade: elite " .. kind .. " " .. tostring(faction) .. ": " .. tostring(ok) .. " " .. tostring(why or ""))
 end
 
--- Units the shock reaches: every player's body and every enemy, with where they stand.
-local function shock_list()
+local function unit_alive(unit)
+	local ok, yes = pcall(g("Unit").alive, unit)
+	return ok and yes == true
+end
+
+-- What this machine can read of a Helldiver body's landing, for M.landing: the state's name where this
+-- machine owns the body, else the collision every machine has, else how long it has been seen.
+local function body_info(e, unit)
+	local EA = g("EntityAux")
+	local seen = e.bodies[unit]
+	local info = { age = seen and e.clock - seen or nil }
+	local ok_m, mine = pcall(EA.has_component_master, unit, "character")
+	if ok_m and mine then
+		local ok, cs = pcall(EA.state_master, unit, "character")
+		local st = ok and type(cs) == "table" and cs.current_state
+		if type(st) == "table" and type(st.name) == "string" then
+			info.state = st.name
+			return info
+		end
+	end
+	local ok, cs = pcall(EA.state, unit, "character")
+	if ok and type(cs) == "table" and type(cs.collision_enabled) == "boolean" then
+		info.collision = cs.collision_enabled
+		info.seated = cs.current_seat_unit ~= nil and unit_alive(cs.current_seat_unit)
+	end
+	return info
+end
+
+-- Every machine, every frame: when each Helldiver body was first seen. A respawn is a new body.
+local function note_bodies(e)
+	for unit in pairs(e.bodies) do
+		if not unit_alive(unit) then e.bodies[unit], e.landing_told[unit] = nil, nil end
+	end
+	for _, a in ipairs(api.game.all_avatars()) do
+		if not e.bodies[a.unit] then e.bodies[a.unit] = e.clock end
+	end
+end
+
+-- The log lines that show the landing check at work in a game run: once as a body is skipped while it
+-- lands, once as it counts again.
+local function tell_landing(e, unit, landing, info)
+	local told = e.landing_told[unit]
+	local how = info.state and ("state " .. info.state) or info.collision ~= nil and ("collision " .. tostring(info.collision))
+		or ("age " .. string.format("%.1f", info.age or -1))
+	if landing and not told then
+		e.landing_told[unit] = "landing"
+		obsidian.log("arcade: shock elite: a Helldiver is landing, not counted (" .. how .. ")")
+	elseif not landing and told == "landing" then
+		e.landing_told[unit] = "out"
+		obsidian.log("arcade: shock elite: the Helldiver is out of the pod after " .. string.format("%.1f", info.age or -1) .. " s (" .. how .. ")")
+	end
+end
+
+-- Units the shock reaches: every player's body and every enemy, with where they stand. A body is
+-- dead or still landing as M.counts reads it.
+local function shock_list(e)
 	local list = {}
 	for _, a in ipairs(api.game.all_avatars()) do
 		local p = position(a.unit)
-		if p then list[#list + 1] = { unit = a.unit, pos = p, player = true } end
+		if p then
+			local info = body_info(e, a.unit)
+			local landing = M.landing(info)
+			tell_landing(e, a.unit, landing, info)
+			list[#list + 1] = { unit = a.unit, pos = p, player = true, dead = not alive(a.unit), landing = landing }
+		end
 	end
 	for _, unit in ipairs(api.enemies.list()) do
 		local p = position(unit)
@@ -397,25 +525,25 @@ local function shock_list()
 	return list
 end
 
-local function shock(e, unit, pos, now)
-	local targets = M.nearest(pos, shock_list(), M.SHOCK_RANGE, M.SHOCK_TARGETS, unit)
-	if #targets == 0 then return end
+local function shock(e, el, unit, pos, now)
+	local targets, why = M.shock_targets(pos, shock_list(e), unit)
+	if el.shock_why ~= why then
+		el.shock_why = why
+		obsidian.log("arcade: shock elite " .. (why and ("holds: " .. why) or "arcs: a Helldiver is near"))
+	end
+	el.shock_hits = targets and #targets or 0
+	if not targets or #targets == 0 then return end
 	local at = {}
 	for _, t in ipairs(targets) do
 		if t.player then
-			if api.player.damage then pcall(api.player.damage, t.unit, M.SHOCK_PLAYER_POWER, { through_armor = true, owner = unit }) end
+			if api.player.damage then pcall(api.player.damage, t.unit, M.shock_power(t), { through_armor = true, owner = unit }) end
 		else
-			pcall(api.enemies.damage, t.unit, M.SHOCK_ENEMY_POWER, nil, { through_armor = true })
+			pcall(api.enemies.damage, t.unit, M.shock_power(t), nil, { through_armor = true })
 		end
 		at[#at + 1] = t.pos
 	end
 	pcall(api.world.arc, M.arc_path(pos, at), { effect = "tesla" })
 	M.record_arc(e.arcs, pos, at, now)
-end
-
-local function unit_alive(unit)
-	local ok, yes = pcall(g("Unit").alive, unit)
-	return ok and yes == true
 end
 
 -- Host: the dome goes at once. The game's own deactivate has every machine take off the c_ actors
@@ -548,7 +676,7 @@ end
 local function host_update(e, run, dt, squad, factions, draw)
 	local now = run.time
 	local _, n = taken_kinds(e)
-	if squad and run.alarm and M.due(e, now, n, draw) then spawn_due(e, run, squad, factions, draw) end
+	if squad and run.alarm and not M.debug.paused and M.due(e, now, n, draw) then spawn_due(e, run, squad, factions, draw) end
 	for unit, el in pairs(e.alive) do
 		if not alive(unit) then
 			drop_dome(el)
@@ -561,7 +689,7 @@ local function host_update(e, run, dt, squad, factions, draw)
 					el.shock_in = el.shock_in - dt
 					if el.shock_in <= 0 then
 						el.shock_in = M.SHOCK_EVERY
-						shock(e, unit, pos, now)
+						shock(e, el, unit, pos, now)
 					end
 				end
 				if el.kind == "bulwark" then bulwark(el, pos, now) end
@@ -652,7 +780,9 @@ end
 function M.update(run, dt, dt_real, squad, factions, draw)
 	local e = M.state
 	e.now = run.time
+	e.clock = e.clock + (dt_real or 0)
 	local host = api.game.is_host()
+	if host then note_bodies(e) end
 	if host and not run.choice then host_update(e, run, dt, squad, factions, draw) end
 	share(e, run, host, dt_real)
 	looks(e)
@@ -704,17 +834,126 @@ function M.clear()
 	pcall(api.lobby.share, "elites", nil)
 	pcall(api.lobby.share, "elite_arcs", nil)
 	M.state = M.new()
+	-- A pause from the debug page holds for one run only, so a real run never starts without elites.
+	M.debug.paused = false
 end
 
--- The debug page: an elite of `kind` near this machine's first player, of the mission's own faction.
+-- The debug page (src/debug.lua) ----------------------------------------------------------------------
+
+-- The faction of the debug page's base: the mission's own for "home".
+function M.debug_faction(base)
+	if base ~= "home" and M.UNITS[base] then return base end
+	local level = obsidian.module("src/level")
+	return level.home or "bugs"
+end
+
+-- M.debug.count elites of `kind` ("random" for one none of the others has) round this machine's first
+-- player, M.debug.distance metres off, on M.debug.base. Answers true and how many, or false and why.
 function M.debug_spawn(run, kind)
 	if not run then return false, "no_run" end
 	if not api.game.is_host() then return false, "host_only" end
 	local l = run.local_list[1]
 	if not (l and l.pos) then return false, "no_squad" end
-	local level = obsidian.module("src/level")
-	local faction = level.home or "bugs"
-	return M.spawn(kind, faction, { x = l.pos.x + 8, y = l.pos.y, z = l.pos.z })
+	local faction = M.debug_faction(M.debug.base)
+	local done, why = 0, nil
+	local taken = taken_kinds(M.state)
+	for _, at in ipairs(M.ring_spots(l.pos, M.debug.count, M.debug.distance)) do
+		local k = kind
+		if k == "random" then
+			k = M.pick_kind(taken, math.random)
+			taken[k] = true
+		end
+		local ok, err = M.spawn(k, faction, at)
+		if ok then done = done + 1 else why = why or err end
+	end
+	if done == 0 then return false, why end
+	return true, done
+end
+
+-- The elites the host runs now, alive: { unit, el } in no set order.
+local function living(e)
+	local out = {}
+	for unit, el in pairs(e.alive) do
+		if alive(unit) then out[#out + 1] = { unit = unit, el = el } end
+	end
+	return out
+end
+
+-- The run's own schedule brings its next elite now: the waits between elites go, the rest stays (none
+-- before FROM minutes, no more than MOST alive).
+function M.debug_next(run)
+	if not run then return false, "no_run" end
+	if not api.game.is_host() then return false, "host_only" end
+	local e = M.state
+	if run.time < M.FROM * 60 then return false, "too_early" end
+	if #living(e) >= M.most(run.time / 60) then return false, "at_most" end
+	if M.debug.paused then return false, "paused" end
+	e.next_at, e.last_death = run.time, -math.huge
+	return true
+end
+
+-- Every elite alive goes. kill: true to kill them, which runs what their kinds do at death (the Brood's
+-- split, the Noxious ground) and gives the kill; false to take them away with none of that.
+function M.debug_clear(run, kill)
+	if not run then return false, "no_run" end
+	if not api.game.is_host() then return false, "host_only" end
+	local e = M.state
+	local list = living(e)
+	if #list == 0 then return false, "no_elite" end
+	for _, it in ipairs(list) do
+		if kill then
+			pcall(api.enemies.kill, it.unit)
+		else
+			drop_dome(it.el)
+			e.alive[it.unit], e.kinds[it.unit] = nil, nil
+			pcall(api.enemies.despawn, it.unit)
+		end
+	end
+	return true, #list
+end
+
+-- Host: the Bulwark elites' domes go, as when the squad breaks one: each comes back DOME_BACK seconds on.
+function M.debug_break_domes(run)
+	if not run then return false, "no_run" end
+	if not api.game.is_host() then return false, "host_only" end
+	local e, found, broke = M.state, false, 0
+	for _, it in ipairs(living(e)) do
+		if it.el.kind == "bulwark" then
+			found = true
+			if it.el.dome then
+				drop_dome(it.el)
+				it.el.dome_lost = e.now or 0
+				broke = broke + 1
+			end
+		end
+	end
+	if not found then return false, "no_bulwark" end
+	if broke == 0 then return false, "no_dome" end
+	return true, broke
+end
+
+-- A line for the debug page on the elites the host runs. now: the run's clock.
+function M.summary(e, now)
+	local kinds, shock, dome = {}, nil, nil
+	for _, el in pairs(e.alive) do
+		kinds[#kinds + 1] = el.kind:sub(1, 1):upper() .. el.kind:sub(2)
+		if el.kind == "shock" and not shock then
+			shock = el.shock_why == "landing" and "Shock holds: the Helldiver in range is still landing"
+				or el.shock_why == "no_helldiver" and ("Shock holds: no Helldiver within " .. M.SHOCK_RANGE .. " m")
+				or el.shock_hits and ("Shock arcs at " .. el.shock_hits) or "Shock waits"
+		end
+		if el.kind == "bulwark" and not dome then
+			if el.dome then dome = "dome up"
+			elseif el.dome_lost then dome = "dome back in " .. math.max(0, math.ceil(el.dome_lost + M.DOME_BACK - (now or 0))) .. " s"
+			else dome = "dome coming" end
+		end
+	end
+	if #kinds == 0 then return "No elites alive." end
+	table.sort(kinds)
+	local parts = { "Alive: " .. table.concat(kinds, ", ") }
+	if shock then parts[#parts + 1] = shock end
+	if dome then parts[#parts + 1] = "Bulwark " .. dome end
+	return table.concat(parts, ". ") .. "."
 end
 
 return M

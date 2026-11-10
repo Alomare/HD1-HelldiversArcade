@@ -132,35 +132,49 @@ test("cards_show_the_partners_and_the_map_panel_links_a_ready_pair", function()
 	eq(marks[1].y + marks[1].h < 100 - 20 * 1.065, true, "under the frame")
 end)
 
-test("a_cards_partner_icons_sit_right_of_the_badge_a_fifth_bigger", function()
-	eq(cards.HINT_R.tall, 24.5, "20% over 20.4")
+test("a_cards_partner_icons_sit_right_of_the_badge_centred_in_the_room_there", function()
+	near(cards.HINT_R.tall, 24.5 * 1.1, "a tall card's 10% over 24.5")
 	eq(cards.HINT_R.wide, 21.6, "20% over 18")
+	-- Each frame's reach right of its centre, from the shapes in tools/build_art.py.
+	near(art.badge_reach(58, "common"), 58 * 2.13 * 0.47, "a circle, 47 of 100")
+	near(art.badge_reach(58, "rare"), 58 * 2.13 * 0.41, "a square, 9 to 91")
+	near(art.badge_reach(58, "legendary"), art.badge_height(58) / 2, "a diamond, to its corners")
+	near(art.badge_reach(58, "evolution"), 58 * 2.13 * 1.1 * 0.49, "a flat hexagon, 49 out")
 	for players = 1, 4 do
 		local r = cards.layout(players, 3)[players].cards[2]
-		for count = 1, 2 do
-			local spots, w = cards.hint_spots(r, count)
-			for _, s in ipairs(spots) do
-				eq(s.x - s.r >= r.x and s.x + s.r <= r.x + r.w and s.y - s.r >= r.y and s.y + s.r <= r.y + r.h, true, players .. " players")
-			end
-			if r.wide then
-				eq(w > 0, true)
-				eq(spots[1].y - spots[1].r >= r.y, true, "a wide card's along the bottom, where the rarity's name is")
-				eq(spots[1].y < r.y + r.h / 2, true)
-				if count == 2 then eq(spots[1].x > spots[2].x, true, "from the right edge leftward") end
-			else
-				eq(w, 0, "the rarity's name keeps its row")
-				local badge_y = r.y + r.h - cards.BADGE_DROP
-				local edge = r.x + r.w / 2 + art.badge_height(cards.BADGE_R) / 2
-				local top, bottom = spots[1].y + spots[1].r, spots[count].y - spots[count].r
-				eq(math.abs((top + bottom) / 2 - badge_y) < 1e-9, true, "centred on the badge's height")
+		for _, rarity in ipairs({ "common", "rare", "perk", "legendary", "evolution", false }) do
+			for count = 1, 2 do
+				local spots, w = cards.hint_spots(r, count, rarity or nil)
 				for _, s in ipairs(spots) do
-					eq(s.x - s.r > edge, true, "clear of the badge")
-					eq(s.y + s.r < r.y + r.h - cards.RARITY_BAR, true, "under the rarity's bar")
+					eq(s.x - s.r >= r.x and s.x + s.r <= r.x + r.w and s.y - s.r >= r.y and s.y + s.r <= r.y + r.h, true, players .. " players")
 				end
-				if count == 2 then eq(spots[1].x == spots[2].x and spots[1].y > spots[2].y, true, "one above the other") end
+				if r.wide then
+					eq(w > 0, true)
+					eq(spots[1].y - spots[1].r >= r.y, true, "a wide card's along the bottom, where the rarity's name is")
+					eq(spots[1].y < r.y + r.h / 2, true)
+					if count == 2 then eq(spots[1].x > spots[2].x, true, "from the right edge leftward") end
+				else
+					eq(w, 0, "the rarity's name keeps its row")
+					near(spots[1].r, cards.HINT_R.tall)
+					local badge_y = r.y + r.h - cards.BADGE_DROP
+					local reach = rarity and art.badge_reach(cards.BADGE_R, rarity) or art.badge_height(cards.BADGE_R) / 2
+					local edge = r.x + r.w / 2 + reach
+					local top, bottom = spots[1].y + spots[1].r, spots[count].y - spots[count].r
+					eq(math.abs((top + bottom) / 2 - badge_y) < 1e-9, true, "centred on the badge's height")
+					for _, s in ipairs(spots) do
+						near(s.x - edge, r.x + r.w - s.x, "as far from the badge's edge as from the card's")
+						eq(s.x - s.r > edge, true, "clear of the badge")
+						eq(s.y + s.r < r.y + r.h - cards.RARITY_BAR, true, "under the rarity's bar")
+					end
+					if count == 2 then eq(spots[1].x == spots[2].x and spots[1].y > spots[2].y, true, "one above the other") end
+				end
 			end
 		end
 	end
+	-- A 360 wide card with a common badge: the icon's centre 299.0 from the card's left.
+	local one = cards.layout(1, 3)[1].cards[1]
+	eq(one.w, 360)
+	eq(math.abs(cards.hint_spots(one, 1, "common")[1].x - one.x - 299.03) < 0.01, true)
 	art.ready = true
 	local k = kit()
 	local r = cards.layout(1, 3)[1].cards[1]

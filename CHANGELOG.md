@@ -2,6 +2,19 @@
 
 New, changed or removed features, one line each, brief and direct. The section for a release becomes the release notes.
 
+## 1.2.0
+
+- New: the debug page's Elite tools: base unit, count and distance for spawned elites, a random kind, pausing the run's elite spawns, the next elite now, killing or removing every elite, breaking the Bulwark dome, and a status line.
+- Changed: Cluster Grenade, Carpet Bombing, Sweet Liberty and Chain Reaction blasts show the fireball and play the sound of the player's grenade, on every machine. Before, they did damage unseen.
+- Changed: the first alarm is the enemy's own again. The host's first moments of a run no longer count as taking over from a host that left, which raised the alarm at once.
+- Changed: Shock elites only arc while a Helldiver out of the drop pod is within range, so a landing player is no longer hit, and their arcs do half damage to other enemies.
+- Changed: the Arcade screen's three panels span the screen's width, staying within the middle 16:9 on wider screens.
+- Changed: the Mission Preview shows the planet's name in the map's top right corner.
+- Changed: the difficulty bar sits inside the difficulty selector, under its name.
+- Changed: the map's upgrade panel spaces its badges more closely, and shows the rerolls and banishes in larger text under the upgrades.
+- Changed: an upgrade card's partner icons are a tenth bigger and centred between the badge and the card's edge.
+- Changed: an elite's icon is half again as big with Better HUD 1.16.1.
+
 ## 1.1.0
 
 - New: a weapon dropped on the ground vanishes after a minute. Weapons in the crate of a stratagem stay.

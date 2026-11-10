@@ -344,29 +344,19 @@ function M.grenade_of(unit)
 	return type(path) == "string" and path ~= "" and path or GRENADE
 end
 
--- A grenade going off at `pos`, for the eyes and ears only: the particle effect and the sound of the
--- grenade's explosion, as the game's explosion manager plays them (the effect and audio of the grenade's
--- explosive_info, ExplosionManager.do_explosion), at most BLAST_LOOKS in BLAST_LOOK_SECONDS. The blast
--- itself is Obsidian API's explode. Before, a copy of the grenade's unit played its on_explode flow,
--- which some grenades' flows can't run on a unit that isn't one of the game's entities.
-function M.explosive_info(path)
-	local lsm = g("LuaSettingsManager")
-	local ok, settings = pcall(lsm.get_settings_by_unit_path, lsm, path)
-	local info = ok and type(settings) == "table" and settings.explosive_info
-	return type(info) == "table" and info or nil
-end
-
+-- A grenade going off at `pos`, for the eyes and ears only: the particle effect and the sound the
+-- grenade unit's on_explode flow plays (src/grenades.lua's LOOKS; a grenade's explosive_info mostly has
+-- neither), at most BLAST_LOOKS in BLAST_LOOK_SECONDS. The blast itself is Obsidian API's explode.
+-- Before, a copy of the grenade's unit played its on_explode flow, which some grenades' flows can't run
+-- on a unit that isn't one of the game's entities.
 function M.blast_look(run, path, pos)
-	if not pos or #run.looks >= rules.BLAST_LOOKS then return end
-	local info = M.explosive_info(path or GRENADE) or M.explosive_info(GRENADE)
+	if not pos or run.exiting or #run.looks >= rules.BLAST_LOOKS then return end
 	local st = api.game.state()
 	local proxy = type(st) == "table" and st.world_proxy
-	if not (info and proxy) then return end
-	local world, at = proxy:get_world(), vec(pos)
-	if type(info.effect) == "string" then pcall(g("World").create_particles, world, info.effect, at) end
-	if type(info.audio) == "string" then
-		pcall(function() g("TimpaniWorld").trigger_event(g("World").timpani_world(world), info.audio, at) end)
-	end
+	if not proxy then return end
+	local ok, world = pcall(proxy.get_world, proxy)
+	if not (ok and world) then return end
+	grenades.play_look(world, path or GRENADE, pos)
 	run.looks[#run.looks + 1] = { left = rules.BLAST_LOOK_SECONDS }
 end
 
@@ -1227,6 +1217,8 @@ end
 -- back. The mission's machine starts its threat and action music again as fights come and go, so they
 -- are kept silent each frame (M.defeat_music_step) through their "volume" parameter, as the API does.
 M.DEFEAT_TRACK = "music_mission_end_failed"
+-- Seconds into the run before a machine that finds itself host counts as taking over from one that left.
+M.TAKE_OVER_AFTER = 2
 
 local function mission_music()
 	local st = api.game.state()
@@ -1630,9 +1622,11 @@ function M.update()
 		end
 		if api.game.is_host() then
 			-- Become host mid-run, when the host leaves: the director picks up where the run is.
+			-- The run's own host passes here on its first frames, with the clock just started: that's no
+			-- take-over, and the first alarm stays the enemy's.
 			if not run.hosting then
 				run.hosting = true
-				if run.time > 0 then
+				if run.time > M.TAKE_OVER_AFTER then
 					director.take_over(run.director, run.time)
 					run.alarm = run.time >= rules.ALARM_AFTER
 					-- The old host's first alarm is long gone or missed: this one keeps it on from here.

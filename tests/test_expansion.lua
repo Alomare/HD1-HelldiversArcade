@@ -537,16 +537,18 @@ booted("a_sweet_liberty_blast_spares_helldivers_and_marks_its_hits_as_they_go_ou
 	if not ok then error(err, 0) end
 end)
 
--- A Sweet Liberty blast's look is the grenade's effect and sound (src/run.lua's blast_look), with nothing
--- left in the level: a mission that ends with one still counted stands down and stops all the same.
+-- A Sweet Liberty blast's look is the effect and sound of the grenade's own flow (src/run.lua's
+-- blast_look, src/grenades.lua's LOOKS), with nothing left in the level: a mission that ends with one
+-- still counted stands down and stops all the same, and plays no more.
 booted("a_run_ending_with_a_blast_look_up_stands_down_and_stops_to_the_end", function(ctx)
 	Network = { peer_id = function() return "1100001" end }
 	local saved = { LuaSettingsManager, World, TimpaniWorld, Vector3 }
 	local ok, err = pcall(function()
-		local played = 0
-		LuaSettingsManager = { get_settings_by_unit_path = function() return { explosive_info = { effect = "effects/blast", audio = "blast" } } end }
-		World = { create_particles = function() played = played + 1 end, timpani_world = function() return {} end }
-		TimpaniWorld = { trigger_event = function() played = played + 1 end }
+		local played, names = 0, {}
+		-- A grenade's explosive_info has no effect or sound: the look doesn't come from there.
+		LuaSettingsManager = { get_settings_by_unit_path = function() return { explosive_info = { blast_radius = 3.5 } } end }
+		World = { create_particles = function(_, name) played = played + 1 names[#names + 1] = name end, timpani_world = function() return {} end }
+		TimpaniWorld = { trigger_event = function(_, name) played = played + 1 names[#names + 1] = name end }
 		Vector3 = function(x, y, z) return { x = x, y = y, z = z } end
 		ctx.answers["game.state"] = { world_proxy = { get_world = function() return {} end } }
 		ctx.switch(true)
@@ -556,10 +558,15 @@ booted("a_run_ending_with_a_blast_look_up_stands_down_and_stops_to_the_end", fun
 		run.blast_look(r, nil, { x = 1, y = 2, z = 0 })
 		eq(#r.looks, 1, "one look counted")
 		eq(played, 2, "the effect and the sound")
+		eq(names[1], "effects/wep_handgrenade_explosion", "the hand grenade's own fireball")
+		eq(names[2], "wep_handgrenade")
+		run.blast_look(r, "equipment/equipment_grenade_incendiary", { x = 1, y = 2, z = 0 })
+		eq(names[3], "effects/wep_handgrenade_explosion_fire", "the player's grenade's")
 		run.stand_down(r)
 		eq(r.exiting, true)
 		eq(#r.looks, 0, "the count goes as the run stands down")
 		run.blast_look(r, nil, { x = 1, y = 2, z = 0 })
+		eq(played, 4, "none once the run stands down")
 		run.stop()
 		eq(run.run, nil, "the run stops")
 		eq(ctx.logs[#ctx.logs]:find("arcade: run over at", 1, true) ~= nil, true, "the stop ran to its end: " .. ctx.logs[#ctx.logs])

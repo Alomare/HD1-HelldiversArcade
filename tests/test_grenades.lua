@@ -185,6 +185,112 @@ test("the_strip_fills_with_the_build_up_wears_off_with_it_and_runs_out_with_the_
 	eq(mid.bars.fire, nil, "while it runs, the strip is left to run down")
 end)
 
+-- The effects each grenade unit's on_explode flow plays, all in resource_packages/mission_common: no
+-- other particle effect may ever be played (one that isn't loaded takes the game down).
+local LOADED = {
+	["effects/wep_handgrenade_explosion"] = true, ["effects/wep_handgrenade_explosion_fire"] = true,
+	["effects/wep_handgrenade_explosion_stun"] = true, ["effects/generated/wep_handgrenade_smoke"] = true,
+	["effects/wep_impactgrenade_explosion"] = true, ["effects/generated/artillery_blast"] = true,
+	["effects/wep_grenadelauncher_incindiary"] = true, ["effects/surface_effects/artillery_default"] = true,
+}
+
+-- World, TimpaniWorld and Vector3 that record what's played; gives back a function that puts them back.
+local function recording()
+	local had = { rawget(_G, "World"), rawget(_G, "TimpaniWorld"), rawget(_G, "Vector3") }
+	local rec = { effects = {}, sounds = {} }
+	rawset(_G, "World", {
+		create_particles = function(world, name, at) rec.effects[#rec.effects + 1] = { world = world, name = name, at = at } end,
+		timpani_world = function(world) return { of = world } end,
+	})
+	rawset(_G, "TimpaniWorld", { trigger_event = function(tw, name, at) rec.sounds[#rec.sounds + 1] = { name = name, at = at } end })
+	rawset(_G, "Vector3", function(x, y, z) return { x = x, y = y, z = z } end)
+	return rec, function() rawset(_G, "World", had[1]) rawset(_G, "TimpaniWorld", had[2]) rawset(_G, "Vector3", had[3]) end
+end
+
+test("every_grenade_looks_like_its_own_flow_with_loaded_effects_only", function()
+	local grenades = fake()
+	for path, look in pairs(grenades.LOOKS) do
+		eq(grenades.is_grenade(path), true, path)
+		eq(LOADED[look.effect], true, path .. "'s effect is one its flow plays, in mission_common")
+		eq(type(look.audio), "string", path)
+	end
+	eq(grenades.look_of("equipment/equipment_grenade_incendiary").effect, "effects/wep_handgrenade_explosion_fire")
+	eq(grenades.look_of("equipment/equipment_grenade_stun").effect, "effects/wep_handgrenade_explosion_stun")
+	eq(grenades.look_of("equipment/equipment_grenade_01").audio, "wep_handgrenade")
+	eq(grenades.look_of("effects/not_loaded").effect, "effects/wep_handgrenade_explosion", "anything else: the game's own grenade")
+	eq(grenades.look_of(nil).effect, "effects/wep_handgrenade_explosion")
+end)
+
+test("a_look_plays_what_the_explosion_manager_did_not", function()
+	local grenades = fake()
+	local rec, restore = recording()
+	local ok, err = pcall(function()
+		local world = {}
+		grenades.play_look(world, "equipment/equipment_grenade_stun", { x = 1, y = 2, z = 3 }, { blast_radius = 6 })
+		eq(#rec.effects, 1)
+		eq(rec.effects[1].name, "effects/wep_handgrenade_explosion_stun")
+		eq(rec.effects[1].world, world)
+		eq(rec.effects[1].at.y, 2)
+		eq(#rec.sounds, 1)
+		eq(rec.sounds[1].name, "wep_handgrenade")
+		-- An impact grenade whose explosive_info has an effect: the manager played it already.
+		grenades.play_look(world, "equipment/equipment_impact_grenade_02", { x = 0, y = 0 }, { effect = "effects/wep_impactgrenade_explosion" })
+		eq(#rec.effects, 1, "no second fireball")
+		eq(#rec.sounds, 2, "but the sound")
+		grenades.play_look(nil, "equipment/equipment_grenade_01", { x = 0, y = 0 })
+		eq(#rec.effects, 1, "no world, nothing")
+	end)
+	restore()
+	if not ok then error(err, 0) end
+end)
+
+test("cluster_blasts_and_another_machines_copies_play_the_grenade_look", function()
+	local grenades, api = fake()
+	local rec, restore = recording()
+	local had_lsm = rawget(_G, "LuaSettingsManager")
+	local ok, err = pcall(function()
+		local world, in_mission = {}, true
+		api.game.in_mission = function() return in_mission end
+		api.game.state = function() return { world_proxy = { get_world = function() return world end } } end
+		api.game.box = function(v) return v end
+		local side, blasts = grenades.new(), {}
+		side.manager = {}
+		side.original = function(manager, unit, pos, info) blasts[#blasts + 1] = info end
+		local info = { center_power = 600, blast_power = 250, blast_radius = 3.5 }
+		side.queue = {
+			{ x = 1, y = 1, z = 0, delay = 0.1, info = info, path = "equipment/equipment_grenade_incendiary" },
+			{ x = 2, y = 2, z = 0, delay = 0.2, info = grenades.smaller(info, 0.5), path = "equipment/equipment_grenade_incendiary", small = true },
+		}
+		grenades.update(side, 0.25)
+		eq(#blasts, 2, "both blasts went off")
+		eq(#rec.effects, 2, "each with the grenade's fireball")
+		eq(rec.effects[1].name, "effects/wep_handgrenade_explosion_fire")
+		eq(rec.effects[2].name, "effects/wep_handgrenade_explosion_fire", "a Carpet Bombing ring too")
+		eq(#rec.sounds, 2)
+		-- Another machine's stun cluster, drawn here without power.
+		rawset(_G, "LuaSettingsManager", {
+			get_settings_by_settings_path = function(_, path) return { explosive_info = { blast_radius = 6, center_power = 0 } } end,
+		})
+		eq(grenades.show_remote(side, { path = "equipment/equipment_grenade_stun", spots = { { x = 5, y = 5, z = 0, delay = 0.1 } } }), true)
+		grenades.update(side, 0.2)
+		eq(#blasts, 3)
+		eq(blasts[3].center_power, 0, "harmless")
+		eq(rec.effects[3].name, "effects/wep_handgrenade_explosion_stun", "the same look as on the thrower's machine")
+		-- Lobby text naming something that isn't a known grenade still plays only a loaded effect.
+		eq(grenades.show_remote(side, { path = "equipment/equipment_grenade_madeup", spots = { { x = 0, y = 0, z = 0, delay = 0 } } }), true)
+		grenades.update(side, 0.1)
+		eq(rec.effects[4].name, "effects/wep_handgrenade_explosion")
+		-- Out of a mission, a blast plays no look.
+		in_mission = false
+		side.queue = { { x = 0, y = 0, z = 0, delay = 0, info = info, path = "equipment/equipment_grenade_01" } }
+		grenades.update(side, 0.1)
+		eq(#rec.effects, 4)
+	end)
+	rawset(_G, "LuaSettingsManager", had_lsm)
+	restore()
+	if not ok then error(err, 0) end
+end)
+
 test("a_gone_unit_is_never_asked_for_its_data", function()
 	-- Unit.get_data on a destroyed unit takes the game down past any pcall: the precision strike's shells
 	-- are gone by the time their explosion names them.

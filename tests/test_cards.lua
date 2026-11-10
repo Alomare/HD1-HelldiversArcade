@@ -224,7 +224,7 @@ test("a_stack_count_sits_small_in_its_badges_top_right_corner", function()
 	local edge = 360 / cards.PANEL_COLUMNS * cards.PANEL_EDGE
 	local cell = (360 - 2 * edge) / cards.PANEL_COLUMNS
 	local r = cell * cards.PANEL_BADGE
-	local gap = cell - r * 2.13
+	local gap = r * cards.PANEL_ROW_GAP
 	near(h, 2 * (r * 2.13 + gap) + art.badge_height(r) + gap + 2 * gap / 2 + 2 * edge, "the panel's height")
 	local badges = {}
 	for i = 1, #kit.hexes, 2 do badges[#badges + 1] = kit.hexes[i] end
@@ -361,6 +361,38 @@ test("the_stat_panel_and_the_upgrades_line_up_with_the_hud_cards_edges", functio
 	local first = rows[1].items[1]
 	eq(first.cx - r * 2.13 / 2 - s.x >= edge + 1, true, "room inside the frame on the left")
 	eq(s.map_y + 500 - (rows[1].cy + r * 2.13 / 2) >= edge + 1, true, "and at the top")
+end)
+
+test("the_map_panels_badges_sit_closer_and_still_clear_each_other", function()
+	-- On the HUD card's 248 units.
+	local edge = 248 / cards.PANEL_COLUMNS * cards.PANEL_EDGE
+	local cell = (248 - 2 * edge) / cards.PANEL_COLUMNS
+	local r = cell * cards.PANEL_BADGE
+	local side = cell - r * 2.13
+	eq(side < cell - cell * 0.36 * 2.13, true, "less room between two frames than at the old 0.36")
+	eq(math.abs(side - 9.87) < 0.01, true, "9.9 units between two frames side by side")
+	eq(r * 2.13 * art.LARGEST < cell, true, "two diamonds side by side don't touch")
+	local row = r * cards.PANEL_ROW_GAP
+	eq(math.abs(row - 8.18) < 0.01, true, "8.2 units between rows")
+	eq(row > r * (cards.LINK_GAP + cards.LINK_H), true, "room for the link marks under a frame")
+	-- Rows of several rarities: each the frame and the gap at least under the one over it.
+	local groups = cards.owned_groups({ oxygenator = 1, rapid_fire = 1, gunslinger = 1, sweet_liberty = 1, deep_pockets = 1 }, upgrades)
+	local _, rows = cards.owned_layout(groups, 0, 0, 248)
+	for i = 2, #rows do
+		eq(rows[i - 1].cy - rows[i].cy >= r * 2.13 + row - 1e-9, true, "rows apart by a frame and the gap at least")
+	end
+end)
+
+test("the_rerolls_and_banishes_go_under_the_upgrades_always_in_one_place", function()
+	local cards_hud = obsidian.module("src/cards_hud")
+	local c = { left = 144, top = 195, width = 248 * 1.5, scale = 1.5, cooling = false }
+	local s = cards_hud.spot(icon_kit(), c)
+	local at = cards_hud.map_spots(s, true)
+	eq(at.tools, s.map_y, "the strip just over the card, however many upgrades there are")
+	near(at.owned, s.map_y + cards.tools_height(cards_hud.TOOLS_SIZE * s.unit) + cards_hud.TOOLS_GAP * s.unit, "the upgrades over the strip")
+	eq(cards_hud.map_spots(s, false).owned, s.map_y, "no counts, the upgrades just over the card")
+	eq(cards_hud.map_spots(s, false).tools, nil)
+	eq(cards_hud.TOOLS_SIZE >= cards_hud.STAT_SIZE, true, "the counts no smaller than the health numbers")
 end)
 
 test("no_part_of_a_panel_is_drawn_twice", function()
