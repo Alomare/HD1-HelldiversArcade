@@ -136,17 +136,30 @@ local function badge(kit, u, cx, cy, r, color)
 	art.badge(kit, u, cx, cy, r, color, HEX, INK)
 end
 
--- The partner icons (src/evolve.lua's hints), each inside a thin ring of the Evolution color, on the row
--- of the card's rarity name, from the right edge leftward: a tall card's in the rarity's bar at the top,
--- a wide card's along the bottom, where the rarity's name sits under the badge. Answers the width they take.
-M.HINT_R = { tall = 20.4, wide = 18 }
+-- The partner icons (src/evolve.lua's hints), each inside a thin ring of the Evolution color. A tall
+-- card's sit to the right of its badge, halfway between the badge and the card's edge, in a column
+-- centred on the badge's height. A wide card's text fills the space right of its badge, so there they
+-- go along the bottom from the right edge leftward, on the row of the rarity's name. Answers the width
+-- they take from that row: none on a tall card.
+M.HINT_R = { tall = 24.5, wide = 21.6 }
 M.HINT_GAP = 8
 M.HINT_EDGE = 12
 M.RARITY_BAR = 44
+M.BADGE_R = 58 -- a tall card's badge
+M.BADGE_DROP = 122 -- the badge's centre under the card's top
 function M.hint_spots(r, count)
 	local rad = r.wide and M.HINT_R.wide or M.HINT_R.tall
 	local out = {}
-	local cy = r.wide and r.y + 4 + rad or r.y + r.h - M.RARITY_BAR / 2
+	if not r.wide then
+		local cx = r.x + r.w / 2
+		local edge = cx + art.badge_height(M.BADGE_R) / 2
+		local x = (edge + r.x + r.w) / 2
+		local cy = r.y + r.h - M.BADGE_DROP
+		local column = count * rad * 2 + (count - 1) * M.HINT_GAP
+		for i = 1, count do out[i] = { x = x, y = cy + column / 2 - rad - (i - 1) * (rad * 2 + M.HINT_GAP), r = rad } end
+		return out, 0
+	end
+	local cy = r.y + 4 + rad
 	for i = 1, count do out[i] = { x = r.x + r.w - M.HINT_EDGE - rad - (i - 1) * (rad * 2 + M.HINT_GAP), y = cy, r = rad } end
 	return out, count > 0 and count * rad * 2 + (count - 1) * M.HINT_GAP + M.HINT_EDGE or 0
 end
@@ -173,9 +186,9 @@ local function tall_card(kit, r, u, owned, color, body, now, hint_w)
 	native.bar(kit, r.x, top - M.RARITY_BAR, r.w, M.RARITY_BAR, M.bar_color(u.rarity))
 	local rarity = u.rarity:upper()
 	native.text(kit, rarity, r.x + 16, top - 32, fitted(kit, rarity, r.w - 32 - (hint_w or 0), { font = "body_large", size = 24, tracking = 2, color = INK }, 16))
-	local iy = top - 122
+	local iy = top - M.BADGE_DROP
 	art.center(kit, "glow", cx, iy, 240, color .. "60")
-	badge(kit, u, cx, iy, 58, color)
+	badge(kit, u, cx, iy, M.BADGE_R, color)
 	local title = u.name:upper()
 	native.text(kit, title, cx, top - 236, fitted(kit, title, r.w - 28, { font = "body_large", size = 28, tracking = 1, align = "center", color = INK }, 20))
 	native.rule(kit, cx, top - 256, r.w - 50, 3, DIM)

@@ -2,17 +2,41 @@
 -- plays an alert (a scout's scream, a flare) and a few seconds later starts one of the game's
 -- encounters (EnemyUtility.check_alarm). Each alarm while an encounter runs adds more of the game's
 -- waves to it (EncounterManager.start_encounter), so here they came on top of the director's, and the
--- alerts never stopped. In a run the alarm is the mission's own instead: the host raises it as the
--- squad lands and raises it again whenever it goes quiet, so it stays on. An enemy that spots the squad
--- attacks at once, with no alert, scream or flare, and no enemy starts an encounter.
+-- alerts never stopped. In a run the first alarm is the game's own, as in any mission: an enemy that
+-- spots the squad screams or fires a flare, and the encounter it starts is the alarm. From then on the
+-- alarm is the run's: the host raises it again whenever it goes quiet, so it stays on, and an enemy that
+-- spots the squad attacks at once, with no alert, scream or flare, and starts no encounter of its own.
 local level = obsidian.module("src/level")
 
 local M = {}
 
 M.CHECK_EVERY = 5 -- seconds between the host's looks at whether the alarm went quiet
 
--- Set while the run raises the alarm, the only start_encounter that passes in a run.
+-- Set while the run raises the alarm, the only start_encounter that passes in a run once it's on.
 local own = false
+-- The run's alarm record while the first alarm is left to the game (M.wait_natural), or nil.
+local waiting = nil
+
+-- A run starts: its first alarm is the game's. a: the run's alarm record, { raised, wait }.
+function M.wait_natural(a)
+	waiting = a
+end
+
+-- No first alarm to wait for: the run raises it itself (a new host mid-run, the run's end).
+function M.skip_natural()
+	waiting = nil
+end
+
+function M.natural() return waiting ~= nil end
+
+-- The game's own alarm went on: the run's record takes it as raised, and keeps it on from here.
+function M.on_natural()
+	local a = waiting
+	waiting = nil
+	if not a then return end
+	a.raised, a.wait = true, M.CHECK_EVERY
+	if obsidian.log then obsidian.log("arcade: the first alarm, raised by the enemy") end
+end
 
 -- What an enemy's alarm check does in a run, given whether it noticed the squad: one that did stops
 -- patrolling, as it would once the alert was over, so the next update goes for the target.
@@ -35,32 +59,39 @@ function M.install()
 	-- Every enemy notices the squad here before an alert, whether through check_alarm or a state of the enemy's
 	-- (the IFV, the jumping scouts, the Hive Lord, the Observers): in a run it goes off patrol instead
 	-- and is told it saw nothing, so no alert starts.
+	-- Until the first alarm, all of it is the game's.
 	obsidian.hook("EnemyUtility", "check_alert", function(original, state, ...)
 		local seen = original(state, ...)
-		if not (level.active and seen and type(state) == "table") then return seen end
+		if not (level.active and not waiting and seen and type(state) == "table") then return seen end
 		M.notice(state, true)
 		return false
 	end)
-	-- An alert under way when the run started ends at once.
+	-- An alert under way when the alarm became the run's ends at once.
 	obsidian.hook("EnemyUtility", "check_alarm", function(original, unit, dt, ctx, raycast, state, ...)
-		if level.active and type(state) == "table" and state.alerted then return M.notice(state, true) end
+		if level.active and not waiting and type(state) == "table" and state.alerted then return M.notice(state, true) end
 		return original(unit, dt, ctx, raycast, state, ...)
 	end)
 	-- Whatever still starts an alert plays it silently.
 	obsidian.hook("EntityStateMachine", "animation_event", function(original, unit, event, ...)
-		if level.active and M.ALERTS[event] then return end
+		if level.active and not waiting and M.ALERTS[event] then return end
 		return original(unit, event, ...)
 	end)
 	obsidian.hook("EncounterManager", "start_encounter", function(original, self, ...)
-		if level.active and not own then return end
+		if level.active and not own then
+			if not waiting then return end
+			local r = { original(self, ...) }
+			M.on_natural()
+			return unpack(r)
+		end
 		return original(self, ...)
 	end)
 end
 
 -- Host only, each frame of the run while the squad is down: raises the alarm at the squad's centre
--- (`at`, a vector) when due. a: the run's alarm record, { raised, wait }. Answers true when raised.
+-- (`at`, a vector) when due, once the game's first alarm went on. a: the run's alarm record, { raised,
+-- wait }. Answers true when raised.
 function M.update(a, em, at, dt)
-	if not (em and at) then return false end
+	if not (em and at) or waiting == a then return false end
 	a.wait = (a.wait or 0) - dt
 	local running = false
 	if a.raised then

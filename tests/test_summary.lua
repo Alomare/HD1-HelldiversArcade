@@ -123,9 +123,10 @@ test("a_machine_follows_the_host_of_its_own_mission_and_run", function()
 	eq(summary.follow(s, rec, 5, 9), "open", "the host's next one")
 end)
 
-test("the_screen_shows_after_the_delay_and_the_host_lets_go_when_all_are_ready_or_time_is_up", function()
+test("the_screen_shows_at_once_and_the_host_lets_go_when_all_are_ready_or_time_is_up", function()
+	eq(summary.DELAY, 0, "no wait on a stopped world")
 	local s = summary.new("defeated", 1, 1, 1, 0)
-	eq(summary.visible(s), false)
+	eq(summary.visible(s), true)
 	eq(summary.accepts(s), false)
 	summary.step(s, summary.DELAY + 0.1)
 	eq(summary.visible(s), true)
@@ -143,7 +144,7 @@ test("the_screen_shows_after_the_delay_and_the_host_lets_go_when_all_are_ready_o
 	eq(summary.should_release(late, { 1 }, {}), true, "time is up")
 	late.closed = true
 	eq(summary.should_release(late, { 1 }, {}), false, "once")
-	eq(summary.should_release(summary.new("defeated", 1, 1, 1, 0.5), { 1 }, { [1] = true }), false, "not before it shows")
+	eq(summary.accepts(summary.new("defeated", 1, 1, 1, 0.5)), false, "no confirm inside the grace, so no early release")
 end)
 
 -- StateGame.update_host as the hook sees it: a step that ends the mission the way the game does.

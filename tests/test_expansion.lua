@@ -68,7 +68,7 @@ local HOOKS = {
 	"TeleportShieldComponent.rpc_teleport_shield_out", "TeleportShieldComponent.update_slaves",
 	"StateMissionEnd.on_enter", "StateMissionEnd.save_stats", "StateMenu.update_host", "Hud.draw_hud",
 	"Hud.draw_stratagem_cooldown_list", "ExplosionManager.do_explosion", "InventoryComponent.ammo_pickup", "StateGame.update_host",
-	"CharacterComponent.handle_interact", "FlowCallbacks.status_area_enter",
+	"FlowCallbacks.status_area_enter",
 }
 
 -- A Survivors seed, the way the galaxy map makes one.

@@ -199,7 +199,7 @@ function M.update(dt_real, squad)
 	end
 	local home = (m and m.home) or level.home or "bugs"
 	local db = music.on and boosted_db() or nil
-	local look = not music.on and (m == nil or M.allowed(m.difficulty))
+	local look = not music.on and not M.hushed and (m == nil or M.allowed(m.difficulty))
 	local action = M.music_step(music, look and boss_out(), db)
 	if action == "play" then
 		local ok, why = api.music.play("music_boss_" .. home)
@@ -228,6 +228,13 @@ function M.on_run_stop()
 	end
 	music = M.new_music()
 	check_in = 0
+	M.hushed = false
+end
+
+-- The defeat screen: the boss track stops and doesn't start again while `on`.
+function M.hush(on)
+	if on and music.on then M.on_run_stop() end
+	M.hushed = on == true
 end
 
 -- A boss, and each part of one (characters/<faction>_boss/...), holds this share of the game's health.

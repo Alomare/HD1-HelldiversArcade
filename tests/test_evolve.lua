@@ -132,24 +132,33 @@ test("cards_show_the_partners_and_the_map_panel_links_a_ready_pair", function()
 	eq(marks[1].y + marks[1].h < 100 - 20 * 1.065, true, "under the frame")
 end)
 
-test("a_cards_partner_icons_sit_on_the_rarity_row_at_the_right_half_again_as_big", function()
-	eq(cards.HINT_R.tall, 20.4, "a ring as wide as the rarity's bar, or a little less: 20% under the 25.5 that overflowed it")
-	eq(cards.HINT_R.wide, 18, "20% under 22.5")
+test("a_cards_partner_icons_sit_right_of_the_badge_a_fifth_bigger", function()
+	eq(cards.HINT_R.tall, 24.5, "20% over 20.4")
+	eq(cards.HINT_R.wide, 21.6, "20% over 18")
 	for players = 1, 4 do
 		local r = cards.layout(players, 3)[players].cards[2]
-		local spots, w = cards.hint_spots(r, 2)
-		eq(w > 0, true)
-		for _, s in ipairs(spots) do
-			-- A ring as wide as the rarity's bar is tall and a little more sits on its frame.
-			eq(s.x - s.r >= r.x and s.x + s.r <= r.x + r.w and s.y - s.r >= r.y and s.y + s.r <= r.y + r.h, true, players .. " players")
-		end
-		eq(spots[1].x > spots[2].x, true, "from the right edge leftward")
-		if r.wide then
-			eq(spots[1].y - spots[1].r >= r.y, true, "a wide card's along the bottom, where the rarity's name is")
-			eq(spots[1].y < r.y + r.h / 2, true)
-		else
-			eq(spots[1].y, r.y + r.h - cards.RARITY_BAR / 2, "a tall card's in the middle of the rarity's bar")
-			eq(spots[2].x - spots[2].r > r.x + r.w / 2, true, "on the right, clear of the rarity's name")
+		for count = 1, 2 do
+			local spots, w = cards.hint_spots(r, count)
+			for _, s in ipairs(spots) do
+				eq(s.x - s.r >= r.x and s.x + s.r <= r.x + r.w and s.y - s.r >= r.y and s.y + s.r <= r.y + r.h, true, players .. " players")
+			end
+			if r.wide then
+				eq(w > 0, true)
+				eq(spots[1].y - spots[1].r >= r.y, true, "a wide card's along the bottom, where the rarity's name is")
+				eq(spots[1].y < r.y + r.h / 2, true)
+				if count == 2 then eq(spots[1].x > spots[2].x, true, "from the right edge leftward") end
+			else
+				eq(w, 0, "the rarity's name keeps its row")
+				local badge_y = r.y + r.h - cards.BADGE_DROP
+				local edge = r.x + r.w / 2 + art.badge_height(cards.BADGE_R) / 2
+				local top, bottom = spots[1].y + spots[1].r, spots[count].y - spots[count].r
+				eq(math.abs((top + bottom) / 2 - badge_y) < 1e-9, true, "centred on the badge's height")
+				for _, s in ipairs(spots) do
+					eq(s.x - s.r > edge, true, "clear of the badge")
+					eq(s.y + s.r < r.y + r.h - cards.RARITY_BAR, true, "under the rarity's bar")
+				end
+				if count == 2 then eq(spots[1].x == spots[2].x and spots[1].y > spots[2].y, true, "one above the other") end
+			end
 		end
 	end
 	art.ready = true

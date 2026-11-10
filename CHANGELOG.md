@@ -5,6 +5,13 @@ New, changed or removed features, one line each, brief and direct. The section f
 ## 1.1.0
 
 - New: a weapon dropped on the ground vanishes after a minute. Weapons in the crate of a stratagem stay.
+- New: on a defeat, the combat music stops and the game's defeat music plays.
+- Changed: the first alarm is the enemy's own, with its scream or flare. The Arcade keeps the alarm on from then.
+- Changed: the end-of-run summary shows at once instead of 2 seconds after the end.
+- Changed: an upgrade card shows the partner icons of an evolution to the right of its badge, a fifth bigger.
+- Changed: a Bulwark elite's dome rides on the elite instead of being placed again as it walks. Anyone walks through it, and shots from outside stop on it.
+- Removed: chests.
+- Changed: an elite's health bar shows all the time, with an icon for its kind in the middle of the bar, in place of the colored glow under it and the name over it. Needs Better HUD 1.16.0.
 - Changed: needs Obsidian API 1.48.0.
 
 ## 1.0.0

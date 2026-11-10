@@ -1,5 +1,5 @@
--- Elites (src/elites.lua) and chests (src/chests.lua): the schedule, the binding of kinds, the arcs, the
--- drops and the opens through lobby data, against a fake Obsidian API.
+-- Elites (src/elites.lua): the schedule, the binding of kinds, the arcs and the marks through lobby data,
+-- against a fake Obsidian API.
 local T = {}
 local function test(name, fn) T[#T + 1] = { name, fn } end
 
@@ -65,7 +65,8 @@ test("an_elite_takes_a_kind_none_of_the_others_has", function()
 	for i = 1, #elites.KINDS - 1 do taken[elites.KINDS[i]] = true end
 	eq(elites.pick_kind(taken, seq({ 0.99 })), elites.KINDS[#elites.KINDS])
 	eq(elites.pick_kind({}, seq({ 0 })), elites.KINDS[1])
-	for _, k in ipairs(elites.KINDS) do eq(type(elites.LOOK[k].color), "string", k .. " has a color") end
+	local atlas = dofile("src/atlas.lua")
+	for _, k in ipairs(elites.KINDS) do eq(atlas.images[elites.LOOK[k].icon] ~= nil, true, k .. " has an icon in the atlas") end
 end)
 
 test("the_base_units_are_the_assassinate_targets", function()
@@ -117,16 +118,18 @@ test("fire_pools_follow_the_walk_and_toxic_ground_lasts", function()
 	eq(#pools, 0)
 end)
 
-test("the_dome_follows_and_comes_back_after_breaking", function()
+test("the_dome_is_placed_once_and_comes_back_after_breaking", function()
 	local elites = load("elites", fake())
 	local el = {}
-	eq(elites.dome_step(el, { x = 0, y = 0 }, 0, false), "place")
-	el.dome, el.dome_pos, el.dome_at = {}, { x = 0, y = 0 }, 0
-	eq(elites.dome_step(el, { x = 1, y = 0 }, 5, true), nil, "still inside")
-	eq(elites.dome_step(el, { x = 4, y = 0 }, 1, true), nil, "moved, but too soon")
-	eq(elites.dome_step(el, { x = 4, y = 0 }, 5, true), "move")
-	eq(elites.dome_step(el, { x = 4, y = 0 }, 6, false), nil, "broken")
-	eq(elites.dome_step(el, { x = 4, y = 0 }, 6 + elites.DOME_BACK, false), "place", "back after a while")
+	eq(elites.dome_step(el, 0, false), "place")
+	el.dome = {}
+	eq(elites.dome_step(el, 5, true), nil, "rides on the elite, never placed again")
+	eq(elites.dome_step(el, 60, true), nil)
+	eq(elites.dome_step(el, 61, false), nil, "broken")
+	eq(el.dome, nil)
+	eq(elites.dome_step(el, 61 + elites.DOME_BACK - 1, false), nil, "not yet")
+	eq(elites.dome_step(el, 61 + elites.DOME_BACK, false), "place", "back after a while")
+	for _, name in ipairs(elites.DOME_LOOSE) do eq(name ~= "g_shield", true, "the outer shell stays") end
 end)
 
 test("the_elites_and_their_arcs_fit_in_lobby_data", function()
@@ -150,6 +153,46 @@ test("the_elites_and_their_arcs_fit_in_lobby_data", function()
 	eq(#elites.take_arcs(seen, "host", elites.decode_arcs(elites.encode_arcs(side, 1234567890)), 1234567890, 4), 1)
 end)
 
+test("better_hud_marks_an_elite_with_its_kinds_icon_while_it_lives", function()
+	local api = fake(false)
+	api.world = { attach_effect = function() return 7 end, detach_effect = function() end }
+	local elites = load("elites", api)
+	local art = obsidian.module("src/art")
+	local was_ready, had_import = art.ready, obsidian.import
+	local had_unit, had_aux = rawget(_G, "Unit"), rawget(_G, "EntityAux")
+	art.ready = true
+	local marks, calls = {}, 0
+	local hud = { elite_mark = function(unit, icon) calls = calls + 1 marks[unit] = icon end }
+	obsidian.import = function(id) return id == "alomare.betterhud" and hud or api end
+	Unit = { alive = function(u) return u.alive ~= false end }
+	EntityAux = { state = function() return {} end }
+	local foe = {}
+	elites.state.kinds[foe] = "fire"
+	local run = { time = 0, sync = { mission = 1 } }
+	elites.update(run, 0.1, 0.1)
+	local atlas = dofile("src/atlas.lua")
+	eq(marks[foe] and marks[foe].art, atlas.material, "the atlas's image")
+	local r = atlas.images.elite_fire
+	near(marks[foe].uv[1], r[1] / atlas.w)
+	elites.update(run, 0.1, 0.1)
+	eq(calls, 1, "marked once")
+	foe.alive = false
+	elites.update(run, 0.1, 0.1)
+	eq(marks[foe], nil, "cleared once it dies")
+	local other = {}
+	elites.state.kinds[other] = "brood"
+	elites.update(run, 0.1, 0.1)
+	eq(marks[other] ~= nil, true)
+	elites.clear()
+	eq(marks[other], nil, "cleared with the run")
+	-- Without Better HUD, or an old one, nothing happens.
+	hud = {}
+	elites.state.kinds[foe] = "shock"
+	foe.alive = true
+	elites.update(run, 0.1, 0.1)
+	art.ready, obsidian.import, Unit, EntityAux = was_ready, had_import, had_unit, had_aux
+end)
+
 test("a_noxious_elites_hit_poisons_the_player", function()
 	local elites = load("elites", fake())
 	local sent
@@ -168,106 +211,5 @@ test("a_noxious_elites_hit_poisons_the_player", function()
 	EntityAux = had
 end)
 
-test("a_chests_rarity_follows_where_it_came_from", function()
-	local chests = load("chests", fake())
-	for i = 0, 99 do eq(chests.roll_rarity("boss", function() return i / 100 end) ~= "common", true, "a boss's is never common") end
-	eq(chests.roll_rarity("elite", function() return 0 end), "common")
-	eq(chests.roll_rarity("elite", function() return 0.999 end), "legendary")
-end)
-
-test("a_chest_opens_once_and_the_ground_has_a_limit", function()
-	local chests = load("chests", fake())
-	local c = chests.new()
-	for i = 1, chests.LIMIT + 2 do chests.add(c, { x = i * 10, y = 0, z = 0 }, "rare", 1) end
-	eq(#c.ground, chests.LIMIT, "the oldest went")
-	eq(c.ground[1].id, 3)
-	eq(chests.within(c.ground, { x = 31, y = 1, z = 0 }).id, 3)
-	eq(chests.within(c.ground, { x = 35, y = 0, z = 0 }), nil, "out of reach")
-	local ev = chests.open(c, 3)
-	eq(ev.seq, 1) eq(ev.rarity, "rare")
-	eq(chests.open(c, 3), nil, "once")
-	eq(#c.ground, chests.LIMIT - 1)
-end)
-
-test("chests_and_opens_fit_in_lobby_data", function()
-	local chests = load("chests", fake())
-	local c = chests.new()
-	for _ = 1, chests.LIMIT do chests.add(c, { x = -1234.5, y = -1234.5, z = -123.4 }, "legendary", 3) end
-	local text = chests.encode_ground(1234567890, c.ground)
-	eq(#text <= 200, true, "short enough: " .. #text)
-	local d = chests.decode_ground(text)
-	eq(#d.list, chests.LIMIT)
-	eq(d.list[1].rarity, "legendary") eq(d.list[1].count, 3) near(d.list[1].z, -123.4)
-	for i = 1, chests.LIMIT do chests.open(c, i) end
-	local o = chests.decode_opened(chests.encode_opened(1234567890, c.opened))
-	eq(#o.list, chests.OPENED_KEPT)
-	local list, seen = chests.take_opened(nil, o)
-	eq(#list, 0, "the first look only notes where they are")
-	eq(seen, chests.LIMIT)
-	local asked = chests.decode_asked(chests.encode_asked(5, { [4] = true, [2] = true }))
-	eq(asked.ids[1], 2) eq(asked.ids[2], 4)
-	eq(chests.encode_asked(5, {}), nil)
-end)
-
-local function run_of(n)
-	local list = {}
-	for i = 1, n do list[i] = { unit = {}, pos = { x = 0, y = 0, z = 0 } } end
-	return { local_list = list, sync = { mission = 77 }, exiting = true }
-end
-
-test("an_open_anywhere_gives_every_player_their_own_upgrades", function()
-	-- The client: a player asks, the host opens, the client's own players get theirs.
-	local api = fake(false)
-	local chests = load("chests", api)
-	local run = run_of(2)
-	local got = {}
-	local grant = function(n, rarity, count)
-		got[#got + 1] = n .. ":" .. rarity .. ":" .. count
-		return { { id = "x", rarity = rarity, name = "X" } }
-	end
-	api.peers.host = { chests = "77;5@r@1@0.0,0.0,0.0", chest_opened = "77;3@4@c@1" }
-	chests.update(run, 1, grant)
-	eq(#got, 0, "the opens before only note where they are")
-	eq(#chests.ground(), 1)
-	eq(chests.press(run, { x = 1, y = 0, z = 0 }), true, "a press beside it")
-	chests.update(run, 1, grant)
-	eq(api.mine.chest_open, "77;5", "asked for")
-	api.peers.host = { chests = "77;", chest_opened = "77;3@4@c@1|4@5@r@1" }
-	chests.update(run, 1, grant)
-	eq(table.concat(got, ","), "1:rare:1,2:rare:1", "every player of this machine")
-	eq(#chests.state.panels, 2)
-	eq(api.mine.chest_open, nil, "the ask goes once the chest is gone")
-	chests.update(run, 1, grant)
-	eq(#got, 2, "once")
-
-	-- The host: the ask opens it, and the host's own players get theirs.
-	local hapi = fake(true)
-	local hchests = load("chests", hapi)
-	local hrun = run_of(1)
-	local hgot = 0
-	local chest = hchests.drop({ x = 0, y = 0, z = 0 }, "boss", function() return 0.9 end)
-	eq(chest.count, 3) eq(chest.rarity, "legendary")
-	hapi.peers.friend = { chest_open = "77;" .. chest.id }
-	hchests.update(hrun, 1, function(_, _, count) hgot = hgot + count return {} end)
-	eq(hgot, 3)
-	eq(#hchests.state.ground, 0)
-	eq(hapi.mine.chest_opened, "77;1@1@l@3")
-	eq(hchests.press(hrun, { x = 0, y = 0, z = 0 }), false, "nothing left to open")
-end)
-
-test("the_host_drops_a_chest_for_an_elite_a_boss_and_rarely_any_kill", function()
-	local api = fake(true)
-	local chests = load("chests", api)
-	chests.on_kill({ x = 0, y = 0 }, false, true, function() return 0.5 end)
-	chests.on_kill({ x = 0, y = 0 }, true, false, function() return 0.5 end)
-	chests.on_kill({ x = 0, y = 0 }, false, false, function() return 0.5 end)
-	eq(#chests.state.ground, 2, "the elite's and the boss's")
-	eq(chests.state.ground[1].count, 1) eq(chests.state.ground[2].count, 3)
-	chests.on_kill({ x = 0, y = 0 }, false, false, function() return 0.001 end)
-	eq(#chests.state.ground, 3, "one in 500 kills")
-	api.host = false
-	chests.on_kill({ x = 0, y = 0 }, true, false, function() return 0.5 end)
-	eq(#chests.state.ground, 3, "only the host drops")
-end)
 
 return T

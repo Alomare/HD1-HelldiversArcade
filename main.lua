@@ -64,8 +64,6 @@ grenades.install(function() return run.run and run.run.grenades end, run.stats_o
 grenades.install_resupply(run.stats_of)
 -- Absolute Freedom on lasers, flamethrowers and arc weapons.
 obsidian.module("src/armor").install(run.stats_of)
--- Chests open with a press of interact beside one (src/chests.lua).
-obsidian.module("src/chests").install(function() return run.run end)
 -- Super Earth Survivors' page in the in-game menu, for testing a run.
 obsidian.module("src/debug").install(run)
 obsidian.module("src/loadout").install(function()

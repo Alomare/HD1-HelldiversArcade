@@ -1075,6 +1075,29 @@ test("the_alarm_goes_on_once_and_again_only_when_quiet", function()
 	eq(starts, 2, "on again within a look once it went quiet")
 end)
 
+test("the_first_alarm_is_the_enemys_then_the_run_keeps_it_on", function()
+	local starts, active = 0, false
+	local em = { is_active = function() return active end, start_encounter = function() starts = starts + 1 active = true end }
+	local a = {}
+	alarm.wait_natural(a)
+	eq(alarm.natural(), true)
+	for _ = 1, 600 do eq(alarm.update(a, em, { x = 0 }, 0.1), false, "the run doesn't raise the first") end
+	eq(starts, 0)
+	-- An enemy raised it: start_encounter passed through the hook.
+	active = true
+	alarm.on_natural()
+	eq(alarm.natural(), false)
+	eq(a.raised, true)
+	for _ = 1, 100 do alarm.update(a, em, { x = 0 }, 0.1) end
+	eq(starts, 0, "kept while the enemy's runs")
+	active = false
+	for _ = 1, 60 do alarm.update(a, em, { x = 0 }, 0.1) end
+	eq(starts, 1, "the run's once it went quiet")
+	alarm.wait_natural({})
+	alarm.skip_natural()
+	eq(alarm.natural(), false, "a new host doesn't wait")
+end)
+
 -- src/perks.lua and src/shield.lua ask for Obsidian API as they load; what's tested here never calls it.
 local had_import = obsidian.import
 obsidian.import = had_import or function() return {} end

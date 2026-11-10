@@ -3,7 +3,7 @@ and the table of where each image sits.
 
 Usage: python tools/build_art.py
 
-The upgrades' icons are game-icons.net's SVGs (tools/icons, credited in CREDITS.md) and, for upgrades that
+The upgrades' and the elites' icons are game-icons.net's SVGs (tools/icons, credited in CREDITS.md) and, for upgrades that
 stand for a stratagem or a perk, the game's own icon as a white PNG (tools/game_icons.py takes them out of
 the game). Every other image is drawn here from shapes. Writes res/art.texture, res/art.material and src/atlas.lua, and internal/art_preview.png to look at.
 Needs Pillow, numpy and resvg-py.
@@ -118,6 +118,9 @@ ICONS = ["oxygenator", "panic", "analysis_field", "molecular_scan", "patch_up", 
          "divers_resolve", "strike_back", "extra_padding", "elusive_tactics", "ignition_rounds", "needle_rounds", "warp_pack", "democracy_protects", "unstoppable_freedom", "exo_expert", "kinetic_battery", "cluster_grenade", "deep_pockets", "weight_training", "carpet_bombing", "napalm_needles", "dynamo", "iron_saint", "spiked_plating", "sample_siphon", "chain_reaction", "tank_hunter", "facetanker", "trailblazer", "quick_draw"]
 # Images that aren't an upgrade's, by their file in tools/icons: the stat numbers' icons.
 MARKS = ["stat_health", "stat_armor"]
+# The elites' marks over their health bars (Better HUD's elite_mark), one for each kind, by their file
+# in tools/icons.
+ELITES = ["elite_fire", "elite_shock", "elite_noxious", "elite_bulwark", "elite_swift", "elite_brood"]
 
 
 # The cards' and the orbs' parts.
@@ -204,6 +207,7 @@ def shape_corner(size):
 def shapes():
     out = {f"icon_{name}": icon_from_svg(name) for name in ICONS}
     out.update({f"mark_{name}": icon_from_svg(name) for name in MARKS})
+    out.update({name: icon_from_svg(name) for name in ELITES})
     out["hex"] = shape_hex(256)
     for kind in ("circle", "square", "diamond", "hex"):
         out[f"frame_{kind}"] = shape_frame(256, kind)

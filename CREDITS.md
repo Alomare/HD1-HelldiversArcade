@@ -1,6 +1,6 @@
 # Icon credits
 
-Most upgrade icons are from [game-icons.net](https://game-icons.net), under
+Most upgrade icons and the elites' icons are from [game-icons.net](https://game-icons.net), under
 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Each one is the original SVG in `tools/icons`, renamed for the upgrade it
 stands for; `tools/build_art.py` draws it into the mod's atlas.
 
@@ -52,6 +52,12 @@ stands for; `tools/build_art.py` draws it into the mod's atlas.
 | facetanker.svg | skull-shield | Lorc | https://game-icons.net/1x1/lorc/skull-shield.html |
 | trailblazer.svg | flame | Carl Olsen | https://game-icons.net/1x1/carl-olsen/flame.html |
 | quick_draw.svg | duel | Sbed | https://game-icons.net/1x1/sbed/duel.html |
+| elite_fire.svg | spark-spirit | Lorc | https://game-icons.net/1x1/lorc/spark-spirit.html |
+| elite_shock.svg | thunder-skull | Lorc | https://game-icons.net/1x1/lorc/thunder-skull.html |
+| elite_noxious.svg | poison-gas | Lorc | https://game-icons.net/1x1/lorc/poison-gas.html |
+| elite_swift.svg | unfriendly-fire | Lorc | https://game-icons.net/1x1/lorc/unfriendly-fire.html |
+| elite_brood.svg | alien-egg | Delapouite | https://game-icons.net/1x1/delapouite/alien-egg.html |
+| elite_bulwark.svg | lightning-dome | Delapouite | https://game-icons.net/1x1/delapouite/lightning-dome.html |
 
 ## From the HELLDIVERS Wiki
 

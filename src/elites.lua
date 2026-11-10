@@ -13,11 +13,10 @@
 --   fire     leaves the flamethrower's burning ground behind it as it moves
 --   shock    arcs every SHOCK_EVERY seconds to the nearest units within SHOCK_RANGE, players and enemies
 --   noxious  its hits poison like a Stalker's, and on death it leaves toxic ground for POOL_SECONDS
---   bulwark  carries a projected shield (the backpack's dome) over itself and those near it
+--   bulwark  carries a shield dome on itself: units walk through, shots from outside stop on it
 --   swift    moves SWIFT_SPEED times as fast and doesn't stagger from hits
 --   brood    splits into BROOD_COUNT small enemies of its faction on death
 local spots = obsidian.module("src/spots")
-local native = obsidian.module("src/native")
 local art = obsidian.module("src/art")
 
 local api = obsidian.import("obsidian.api")
@@ -27,15 +26,15 @@ local M = {}
 local function g(name) return rawget(_G, name) end
 
 M.KINDS = { "fire", "shock", "noxious", "bulwark", "swift", "brood" }
--- Each kind's color, the effect on the body (Obsidian API's world.attach_effect, 1.33.1 for all but
--- the shock) and the name over it.
+-- Each kind's effect on the body (Obsidian API's world.attach_effect, 1.33.1 for all but the shock) and
+-- its icon in the atlas, which Better HUD shows in the middle of the elite's health bar (elite_mark).
 M.LOOK = {
-	fire = { color = "#ff6a1a", effect = "fire", name = "FIRE ELITE" },
-	shock = { color = "#49c8ff", effect = "enemy_shock", name = "SHOCK ELITE" },
-	noxious = { color = "#8ee03c", effect = "poison", name = "NOXIOUS ELITE" },
-	bulwark = { color = "#f2d36b", effect = nil, name = "BULWARK ELITE" },
-	swift = { color = "#f4f4f4", effect = nil, name = "SWIFT ELITE" },
-	brood = { color = "#c45ad8", effect = "confuse", name = "BROOD ELITE" },
+	fire = { effect = "fire", icon = "elite_fire" },
+	shock = { effect = "enemy_shock", icon = "elite_shock" },
+	noxious = { effect = "poison", icon = "elite_noxious" },
+	bulwark = { effect = nil, icon = "elite_bulwark" },
+	swift = { effect = nil, icon = "elite_swift" },
+	brood = { effect = "confuse", icon = "elite_brood" },
 }
 
 -- The base unit by faction: catalog key and unit path.
@@ -76,9 +75,13 @@ M.POOL_UNIT = "gameobjects/gameobject_toxic_area" -- the toxic impact grenade's 
 M.POOL_SECONDS = 30
 M.POOL_EVERY = 10 -- the ground is laid again as each one runs out
 M.DOME_UNIT = "equipment/equipment_shield_generator_shield_01" -- the projected shield, 2.8 m, in mission_common
-M.DOME_MOVE = 2.5 -- metres the elite walks out of the middle before the dome follows
-M.DOME_EVERY = 3 -- seconds between moves at the most
 M.DOME_BACK = 8 -- seconds before a broken dome comes back
+-- The dome's actors that go (shield_dome_component.lua:54-57): the c_ two stop walkers (the game
+-- takes them off a dome that fades, line 43), the inner shell stops shots from inside. The outer
+-- shell, g_shield, stays and stops shots from outside.
+M.DOME_LOOSE = { "c_shield", "c_shield_inner", "g_shield_inner" }
+M.DOME_RIDE = 4 -- metres between a new dome and the Bulwark elite it rides on
+M.DOME_LAG = 0.5 -- metres the outer shell may trail the dome before it's made again where the dome is
 M.SWIFT_SPEED = 1.6
 M.SWIFT_IMMUNE = { "generic_stun", "knockdown" } -- bullet_stun is the stagger of every hit
 M.BROOD_COUNT = 3
@@ -415,19 +418,22 @@ local function unit_alive(unit)
 	return ok and yes == true
 end
 
+-- Host: the dome goes at once. The game's own deactivate has every machine take off the c_ actors
+-- (shield_dome_component.lua:43), which ride_domes took off already.
 local function drop_dome(el)
-	if el.dome and unit_alive(el.dome) then command(el.dome, "shield_dome", "deactivate") end
+	if el.dome and unit_alive(el.dome) then
+		local st = api.game.state()
+		local spawner = type(st) == "table" and st.entity_spawner
+		if spawner then pcall(spawner.despawn_entity, spawner, el.dome) end
+	end
 	el.dome = nil
 end
 
--- The dome follows the elite: a new one where it stands once it walks out of the middle, the old one
--- switched off. One the squad breaks comes back DOME_BACK seconds later.
-function M.dome_step(el, pos, now, dome_alive)
+-- The dome rides on the elite (ride_domes), so it's placed once. One the squad breaks comes back
+-- DOME_BACK seconds later.
+function M.dome_step(el, now, dome_alive)
 	if el.dome then
-		if dome_alive then
-			if flat2(el.dome_pos, pos) < M.DOME_MOVE * M.DOME_MOVE or now - el.dome_at < M.DOME_EVERY then return nil end
-			return "move"
-		end
+		if dome_alive then return nil end
 		el.dome, el.dome_lost = nil, now
 	end
 	if el.dome_lost and now - el.dome_lost < M.DOME_BACK then return nil end
@@ -435,13 +441,93 @@ function M.dome_step(el, pos, now, dome_alive)
 end
 
 local function bulwark(el, pos, now)
-	local step = M.dome_step(el, pos, now, el.dome and unit_alive(el.dome))
-	if not step then return end
-	if step == "move" then drop_dome(el) end
-	el.dome = spawn_entity(M.DOME_UNIT, pos)
-	el.dome_pos, el.dome_at, el.dome_lost = { x = pos.x, y = pos.y }, now, nil
+	if not M.dome_step(el, now, el.dome ~= nil and alive(el.dome)) then return end
+	el.dome, el.dome_lost = spawn_entity(M.DOME_UNIT, pos), nil
 	-- Enemies aim at a dome as they do at a player's: not at this one.
 	if el.dome then command(el.dome, "enemy_target", "disable") end
+end
+
+local function flat_of(v)
+	local V = g("Vector3")
+	return { x = V.x(v), y = V.y(v) }
+end
+
+-- Every machine: what makes the dome a projected shield. Each machine makes the dome's actors at its
+-- first update there (shield_dome_component.lua:50-58); then DOME_LOOSE go, and the dome rides on the
+-- Bulwark elite it came up under, as a backpack rides on its wielder (equipment_component.lua:94).
+local function ride_domes(e)
+	local U, A, W = g("Unit"), g("Actor"), g("World")
+	if not (api.game.slaves and U and A and W) then return end
+	e.rides = e.rides or {}
+	for dome in pairs(e.rides) do
+		if not unit_alive(dome) then e.rides[dome] = nil end
+	end
+	local bulwarks
+	for dome, ctx in pairs(api.game.slaves("shield_dome")) do
+		local ride = e.rides[dome]
+		local ready = type(ctx) == "table" and type(ctx.state) == "table" and ctx.state.initialized
+		if ready and unit_alive(dome) then
+			if not ride then
+				ride = {}
+				e.rides[dome] = ride
+				for _, name in ipairs(M.DOME_LOOSE) do
+					local ok, actor = pcall(U.actor, dome, name)
+					if ok and actor then pcall(U.destroy_actor, dome, name) end
+				end
+			end
+			local ok_s, shell = pcall(U.actor, dome, "g_shield")
+			shell = ok_s and shell or nil
+			if not ride.on then
+				if not bulwarks then
+					bulwarks = {}
+					for unit, kind in pairs(e.kinds) do
+						local p = kind == "bulwark" and alive(unit) and position(unit)
+						if p then bulwarks[#bulwarks + 1] = { unit = unit, pos = p } end
+					end
+				end
+				local at = position(dome)
+				local near = at and M.nearest(at, bulwarks, M.DOME_RIDE, 1)[1]
+				local st = api.game.state()
+				local proxy = type(st) == "table" and st.world_proxy
+				local ok_w, world = false, nil
+				if proxy then ok_w, world = pcall(proxy.get_world, proxy) end
+				if near and ok_w and world then
+					-- Where the shell sits from the dome's middle, while both are where the game put them.
+					local ok_p, sp = false, nil
+					if shell then ok_p, sp = pcall(A.position, shell) end
+					if ok_p and sp then
+						local s = flat_of(sp)
+						ride.offset = { x = s.x - at.x, y = s.y - at.y }
+					end
+					if pcall(W.link_unit, world, dome, 0, near.unit, 0) then
+						pcall(U.set_local_position, dome, 0, g("Vector3")(0, 0, 0))
+						pcall(U.set_local_rotation, dome, 0, g("Quaternion").identity())
+						ride.on, ride.from = near.unit, at
+						obsidian.log("arcade: bulwark dome rides on its elite (" .. (api.game.is_host() and "host" or "client")
+							.. "), shell " .. (shell and "kept" or "missing"))
+					end
+				end
+			elseif shell and ride.offset and alive(ride.on) then
+				-- A shell that stays where it was made is made again where the dome is now.
+				local at, ok_p, sp = position(dome), pcall(A.position, shell)
+				if at and ok_p and sp then
+					local s = flat_of(sp)
+					local lag = (s.x - ride.offset.x - at.x) ^ 2 + (s.y - ride.offset.y - at.y) ^ 2
+					if lag > M.DOME_LAG * M.DOME_LAG then
+						pcall(U.destroy_actor, dome, "g_shield")
+						pcall(U.create_actor, dome, "g_shield")
+						if not ride.told then
+							ride.told = true
+							obsidian.log("arcade: bulwark dome: the shell stayed behind, made again as the elite walks")
+						end
+					elseif not ride.told and flat2(ride.from, at) > 1 then
+						ride.told = true
+						obsidian.log("arcade: bulwark dome: the shell walks with the elite")
+					end
+				end
+			end
+		end
+	end
 end
 
 local function swift(el, unit, dt)
@@ -486,11 +572,25 @@ local function host_update(e, run, dt, squad, factions, draw)
 	for _, p in ipairs(M.pools_due(e.pools, now)) do spawn_entity(M.POOL_UNIT, p) end
 end
 
+-- Better HUD keeps an elite's health bar showing while it lives, with its kind's icon in the middle of
+-- it. kind nil clears the mark.
+local function mark(unit, kind)
+	local hud = obsidian.import("alomare.betterhud")
+	if type(hud) ~= "table" or type(hud.elite_mark) ~= "function" then return end
+	local icon = nil
+	if kind then
+		icon = art.image(M.LOOK[kind].icon)
+		if not icon then return end
+	end
+	pcall(hud.elite_mark, unit, icon)
+end
+
 -- Every machine: the host's elites bound to units here, and the looks put on and taken off.
 local function looks(e)
 	for unit, handle in pairs(e.looks) do
 		if not alive(unit) or not e.kinds[unit] then
 			if handle ~= true then pcall(api.world.detach_effect, handle) end
+			mark(unit, nil)
 			e.looks[unit] = nil
 		end
 	end
@@ -500,6 +600,7 @@ local function looks(e)
 			local ok, handle = false, nil
 			if effect then ok, handle = pcall(api.world.attach_effect, unit, effect) end
 			e.looks[unit] = ok and type(handle) == "number" and handle or true
+			mark(unit, kind)
 		end
 	end
 end
@@ -555,6 +656,7 @@ function M.update(run, dt, dt_real, squad, factions, draw)
 	if host and not run.choice then host_update(e, run, dt, squad, factions, draw) end
 	share(e, run, host, dt_real)
 	looks(e)
+	ride_domes(e)
 end
 
 -- An enemy died, on every machine. pos: where. Answers the elite's kind when it was one.
@@ -591,37 +693,13 @@ function M.on_player_hit(unit, info)
 		{ power = 0, angle_hit = 0, angle_incidence = 0, owner_unit = from, attacker_unit = from, hit_status_effects = M.POISON })
 end
 
--- Pixels from the camera, into the kit's 1920x1080 design space, centred as obsidian.ui.frame puts it.
-local function on_screen(p)
-	local px, py, on = api.world.to_screen(p)
-	if not on then return nil end
-	local w, h = g("Application").resolution()
-	local s = math.min(w / 1920, h / 1080)
-	return (px - (w - 1920 * s) / 2) / s, (py - (h - 1080 * s) / 2) / s
-end
-
--- A glow in the kind's color under each elite in view, and its name over it.
-function M.draw(kit)
-	for unit, kind in pairs(M.state.kinds) do
-		local p = alive(unit) and position(unit)
-		local look = M.LOOK[kind]
-		if p and look then
-			local x, y = on_screen(p)
-			if x then
-				art.center(kit, "glow", x, y, 190, look.color .. "70")
-				local tx, ty = on_screen({ x = p.x, y = p.y, z = p.z + 3.2 })
-				if tx then native.text(kit, look.name, tx, ty, { font = "heading", size = 20, tracking = 1, align = "center", color = look.color }) end
-			end
-		end
-	end
-end
-
--- The run is over: what this machine shares and draws goes.
+-- The run is over: what this machine shares and shows goes.
 function M.clear()
 	local e = M.state
 	for _, el in pairs(e.alive) do pcall(drop_dome, el) end
-	for _, handle in pairs(e.looks) do
+	for unit, handle in pairs(e.looks) do
 		if handle ~= true then pcall(api.world.detach_effect, handle) end
+		mark(unit, nil)
 	end
 	pcall(api.lobby.share, "elites", nil)
 	pcall(api.lobby.share, "elite_arcs", nil)

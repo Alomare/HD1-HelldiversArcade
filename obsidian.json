@@ -56,7 +56,6 @@
     "src/armor.lua",
     "src/spots.lua",
     "src/elites.lua",
-    "src/chests.lua",
     "src/run.lua",
     "src/loadout.lua",
     "src/campaign.lua",

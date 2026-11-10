@@ -460,6 +460,31 @@ local function sync_sidearm(p, unit, inv)
 	end
 end
 
+-- A firearm's firing sound loops from its slave's fire_start to its fire_end (FirearmComponent.update_slaves),
+-- which follow the slave's was_firing. Slave still firing while the master no longer is, for over
+-- LOOP_STUCK real seconds: a loop that won't stop. Logged once a time, with the drones out then.
+M.LOOP_STUCK = 3
+local function watch_loops(p, unit, dt_real)
+	p.loop_stuck = p.loop_stuck or {}
+	for _, w in ipairs(api.gear.weapons_of(unit)) do
+		local master, slave = api.game.masters("firearm")[w.unit], api.game.slaves("firearm")[w.unit]
+		local ms, ss = master and master.state, slave and slave.state
+		local key = tostring(w.unit)
+		if ms and ss and ss.was_firing and not ms.firing_auto and not ms.firing_single then
+			local t = (p.loop_stuck[key] or 0) + (dt_real or 0)
+			if t >= M.LOOP_STUCK and (p.loop_stuck[key] or 0) < M.LOOP_STUCK then
+				local n = 0
+				for _, list in pairs(p.drones or {}) do n = n + #list end
+				obsidian.log(("arcade: %s firing loop stuck %.1f s: slave auto %s single %s, master rounds %s, %d drones")
+					:format(w.slot, t, tostring(ss.firing_auto), tostring(ss.firing_single), tostring(ms.rounds), n))
+			end
+			p.loop_stuck[key] = t
+		else
+			p.loop_stuck[key] = nil
+		end
+	end
+end
+
 -- EXO Expert's, defined below.
 local sync_vehicle
 
@@ -482,6 +507,7 @@ function M.sync(p, unit, dt_game, dt_real)
 	sync_reflexes(p, unit, inv, dt_real)
 	sync_picked(p, unit, inv)
 	sync_drones(p, unit)
+	pcall(watch_loops, p, unit, dt_real)
 	sync_vehicle(p, unit)
 	pcall(sync_sidearm, p, unit, inv)
 	local ok, err = pcall(trail.sync, p, unit, dt_game)

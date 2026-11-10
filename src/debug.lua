@@ -158,17 +158,11 @@ function M.build(run)
 			return "Done. Strikes fall for " .. bombard.DEBUG_SECONDS .. " seconds."
 		end)
 
-		-- Elites and chests (src/elites.lua, src/chests.lua), beside the player, from the host.
-		local elites, chests = obsidian.module("src/elites"), obsidian.module("src/chests")
+		-- Elites (src/elites.lua), beside the player, from the host.
+		local elites = obsidian.module("src/elites")
 		page:header("Elites")
 		for _, kind in ipairs(elites.KINDS) do
 			page:action("Spawn a " .. kind:sub(1, 1):upper() .. kind:sub(2) .. " elite", function() return said(elites.debug_spawn(run.run, kind)) end)
-		end
-		page:header("Chests")
-		for _, rarity in ipairs(chests.RARITIES) do
-			local name = rarity:sub(1, 1):upper() .. rarity:sub(2)
-			page:action("Drop a " .. name .. " chest of 1", function() return said(chests.debug_drop(run.run, rarity, chests.COUNT.elite)) end)
-			page:action("Drop a " .. name .. " chest of 3", function() return said(chests.debug_drop(run.run, rarity, chests.COUNT.boss)) end)
 		end
 
 		page:header("Meters")

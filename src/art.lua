@@ -23,15 +23,19 @@ function M.draw(kit, name, x, y, w, h, c)
 	return kit:art(atlas.material, x, y, w, h, c, { u0, v0, u0 + r[3] / atlas.w, v0 + r[4] / atlas.h })
 end
 
--- An upgrade's icon for another mod to draw (Better HUD's status_effect): the atlas's image, as the
--- material and its uv, or else the game's stratagem icon the card falls back to.
+-- An atlas image for another mod to draw (Better HUD's status_effect and elite_mark): the material and
+-- the image's uv, or nil when there's no such image.
+function M.image(name)
+	local r = M.ready and atlas.images[name]
+	if not r then return nil end
+	local u0, v0 = r[1] / atlas.w, r[2] / atlas.h
+	return { art = atlas.material, uv = { u0, v0, u0 + r[3] / atlas.w, v0 + r[4] / atlas.h } }
+end
+
+-- An upgrade's icon for another mod to draw: its atlas image, or else the game's stratagem icon the card
+-- falls back to.
 function M.spec(u)
-	local r = M.ready and atlas.images["icon_" .. u.id]
-	if r then
-		local u0, v0 = r[1] / atlas.w, r[2] / atlas.h
-		return { art = atlas.material, uv = { u0, v0, u0 + r[3] / atlas.w, v0 + r[4] / atlas.h } }
-	end
-	return { icon = u.icon }
+	return M.image("icon_" .. u.id) or { icon = u.icon }
 end
 
 -- A square image centred on a point.

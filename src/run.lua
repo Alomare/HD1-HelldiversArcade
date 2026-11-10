@@ -33,7 +33,6 @@ local card_anim = obsidian.module("src/card_anim")
 local redraw = obsidian.module("src/redraw")
 local mouse = obsidian.module("src/mouse")
 local elites = obsidian.module("src/elites")
-local chests = obsidian.module("src/chests")
 local trail = obsidian.module("src/trail")
 local dive = obsidian.module("src/dive")
 local hits = obsidian.module("src/hits")
@@ -209,7 +208,9 @@ function M.start(mission_seed, difficulty)
 		choice = nil, shared_at = 0, local_list = {}, looks = {}, liberty_peers = {},
 	}
 	run.sync = sync.new(mission_seed, run.draws:random(1, 2 ^ 30))
-	elites.state, chests.state = elites.new(), chests.new()
+	-- The first alarm is the enemy's own (src/alarm.lua).
+	alarm.wait_natural(run.game_alarm)
+	elites.state = elites.new()
 	dive.clear()
 	run.env = env_for(run)
 	-- The end-of-run summary: what each player of this machine did, and the hold on the mission's end.
@@ -287,8 +288,8 @@ function M.stop()
 	samples.clear()
 	cards_hud.clear()
 	pcall(bosses.on_run_stop)
+	alarm.skip_natural()
 	pcall(elites.clear)
-	pcall(chests.clear)
 	dive.clear()
 	fight.clear()
 	shield.clear()
@@ -433,10 +434,8 @@ function M.on_killed(unit, attacker, owner)
 	local peer = next(run.liberty_peers) ~= nil and peer_of(killer)
 	if peer and run.liberty_peers[peer] then M.blast_look(run, M.grenade_of(killer), pos) end
 	if api.game.is_host() and rules.drops_ammo(run.draws) then M.drop_ammo(run, pos) end
-	-- Elites (src/elites.lua) and chests (src/chests.lua): the host drops a chest for an elite, a boss,
-	-- or now and then any kill.
-	local ok_e, kind = pcall(elites.on_killed, unit, pos, enemy.faction)
-	pcall(chests.on_kill, pos, enemy.boss, ok_e and kind ~= nil, function() return run.draws:random() end)
+	-- Elites (src/elites.lua): what a kind leaves behind when it dies.
+	pcall(elites.on_killed, unit, pos, enemy.faction)
 end
 
 -- Sample Siphon: the player a kill at `pos` sends its sample to, the nearest within reach who has it,
@@ -761,16 +760,6 @@ local function take(run, n, u)
 	local ok, err = pcall(u.apply, run.env, p.owned[u.id], n, p.absorbed)
 	if not ok then obsidian.log("arcade: " .. u.id .. " failed: " .. tostring(err)) end
 	obsidian.log("arcade: player " .. n .. " took " .. u.id .. " (" .. p.owned[u.id] .. ")")
-end
-
--- A chest (src/chests.lua): `count` upgrades of `rarity` for player n, drawn as the cards are, and
--- taken at once. Answers the upgrades.
-function M.grant(n, rarity, count)
-	local run = M.run
-	if not (run and run.local_list[n]) then return {} end
-	local row = roll_row(run, n, sync.level(run.sync), count, function(u) return u.rarity == rarity end)
-	for _, u in ipairs(row) do take(run, n, u) end
-	return row
 end
 
 -- The debug page (src/debug.lua): an upgrade's stacks set directly. The player's stats start over and
@@ -1200,13 +1189,12 @@ end
 
 -- The mission is ending (extraction, a wipe or an abort): the game fades out, then despawns every
 -- unit it owns and changes state. Nothing new may come into the world by then, so the run stands down
--- at once: no more spawns, ammo boxes or blasts, and its own props (samples, chests, drones) go.
+-- at once: no more spawns, ammo boxes or blasts, and its own props (samples, drones) go.
 function M.stand_down(run)
 	if run.exiting then return end
 	run.exiting = true
 	samples.clear()
 	run.looks = {}
-	pcall(chests.clear_props)
 	for _, p in pairs(run.players) do pcall(perks.remove_drones, p) end
 	obsidian.log("arcade: the mission is ending, the run stands down at " .. clock(run.time))
 end
@@ -1233,10 +1221,69 @@ local function present_slots()
 	return out
 end
 
+-- The defeat's music. The combat music stops and the game's defeat track plays in the mission's own
+-- sound world, where its bank has it, as the mission end screen plays it. The track isn't held through
+-- Obsidian API's music.play: a held track would carry into that screen and leave it silent once given
+-- back. The mission's machine starts its threat and action music again as fights come and go, so they
+-- are kept silent each frame (M.defeat_music_step) through their "volume" parameter, as the API does.
+M.DEFEAT_TRACK = "music_mission_end_failed"
+
+local function mission_music()
+	local st = api.game.state()
+	local machine = type(st) == "table" and st.audio_state_machine
+	if type(machine) ~= "table" or not machine.timpani_world then return nil end
+	return machine
+end
+
+local function quiet_combat_music(machine, volume)
+	local T = g("TimpaniWorld")
+	for _, id in ipairs({ machine.music_action, machine.music_threat }) do
+		if id ~= nil then pcall(T.set_parameter, machine.timpani_world, id, "volume", volume) end
+	end
+end
+
+function M.defeat_music(run, on)
+	local T = g("TimpaniWorld")
+	if on then
+		pcall(bosses.hush, true)
+		local machine = mission_music()
+		if not (machine and T) then return end
+		quiet_combat_music(machine, 0)
+		if run.defeat_music == nil then
+			local ok, has = pcall(T.has_event, machine.timpani_world, M.DEFEAT_TRACK)
+			local played = false
+			if ok and has then
+				local ok_t, id = pcall(T.trigger_event, machine.timpani_world, M.DEFEAT_TRACK)
+				if ok_t and id ~= nil then run.defeat_music, played = { world = machine.timpani_world, id = id }, true end
+			end
+			run.defeat_music = run.defeat_music or false
+			obsidian.log("arcade: the music stops" .. (played and ", the defeat track plays" or ", no defeat track in this mission's sounds"))
+		end
+		return
+	end
+	if run.defeat_music == nil then return end
+	if run.defeat_music and T then pcall(T.stop, run.defeat_music.world, run.defeat_music.id) end
+	run.defeat_music = nil
+	pcall(bosses.hush, false)
+	local machine = mission_music()
+	if machine and T then quiet_combat_music(machine, 1) end
+end
+
+-- Each frame of a defeat's summary: the combat music stays down.
+function M.defeat_music_step(run)
+	if run.defeat_music == nil then return end
+	local machine = mission_music()
+	if machine and g("TimpaniWorld") then quiet_combat_music(machine, 0) end
+end
+
 -- The summary comes up: the game stops as for the cards, and a level-up being chosen is dropped, as
 -- nothing more comes of it. kind: "extracted" or "defeated". seq: the host's number for it. age: the
 -- host's seconds since the end.
 local function open_summary(run, kind, seq, age)
+	if kind == "defeated" then
+		local ok, err = pcall(M.defeat_music, run, true)
+		if not ok then obsidian.log("arcade: defeat music: " .. tostring(err)) end
+	end
 	run.choice = nil
 	run.summary = summary.new(kind, run.sync.mission, run.sync.run, seq, age)
 	run.summary.time, run.summary.bosses = run.time, run.tally.bosses
@@ -1257,6 +1304,7 @@ local function cancel_summary(run)
 	run.summary, run.hold.kind = nil, nil
 	run.cancelled = s
 	s.kind = "cancelled"
+	pcall(M.defeat_music, run, false)
 	input.release(rules.INPUT_GRACE)
 	input.cursor("game")
 	M.hold_world(run, false)
@@ -1483,6 +1531,7 @@ function M.update()
 	input.update(dt_real)
 	-- While the summary is up, the run stands still: no clock, spawns, timers or samples.
 	if run.summary then
+		pcall(M.defeat_music_step, run)
 		step_summary(run, dt_real)
 		return
 	end
@@ -1501,12 +1550,10 @@ function M.update()
 	end)
 	-- Elusive Tactics' stuns still to come.
 	pcall(dive.step, api, run.time)
-	-- Elites: the host's spawns and kinds, every machine's looks. Chests: drops, opens and upgrades.
+	-- Elites: the host's spawns and kinds, every machine's looks.
 	local ok_el, err_el = pcall(elites.update, run, run.choice and 0 or dt_game, dt_real, squad,
 		director.factions(level.home or "bugs", run.time / 60, run.seed), function() return run.director.rng:random() end)
 	if not ok_el then obsidian.log("arcade: elites: " .. tostring(err_el)) end
-	local ok_c, err_c = pcall(chests.update, run, dt_real, M.grant, M.play_at)
-	if not ok_c then obsidian.log("arcade: chests: " .. tostring(err_c)) end
 
 	-- Objectives done, as the run's shared value counts them: a banish for every player for each new one.
 	local done = sync.objectives(run.sync)
@@ -1588,10 +1635,12 @@ function M.update()
 				if run.time > 0 then
 					director.take_over(run.director, run.time)
 					run.alarm = run.time >= rules.ALARM_AFTER
+					-- The old host's first alarm is long gone or missed: this one keeps it on from here.
+					alarm.skip_natural()
 					obsidian.log("arcade: host now, the director picks up at " .. clock(run.time))
 				end
 			end
-			-- The game's alarm, on from the landing and kept on (src/alarm.lua).
+			-- The game's alarm, kept on once the enemy first raises it (src/alarm.lua).
 			if squad then
 				local st = api.game.state()
 				local first = not run.game_alarm.raised
@@ -1718,11 +1767,6 @@ function M.draw(kit, paused)
 		if not paused then M.draw_sample_flashes(kit, run) end
 	elseif not paused then
 		M.draw_orbs(kit, run)
-	end
-	-- The elites' glow and names, the chests' glow and what they gave (src/elites.lua, src/chests.lua).
-	if not paused and not run.choice then
-		pcall(elites.draw, kit)
-		pcall(chests.draw, kit, run, input.main_device() == "keyboard")
 	end
 	if run.choice then
 		M.draw_choice(kit, run)

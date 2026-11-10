@@ -19,7 +19,7 @@
 -- host's: it opens the host's summary, and a closed one it hasn't seen open stays shut.
 local M = {}
 
-M.DELAY = 2 -- seconds from the end to the screen showing
+M.DELAY = 0 -- seconds from the end to the screen showing: at once, as the world stands still from the end
 M.FADE = 0.6 -- seconds it takes to fade in
 M.LIMIT = 30 -- seconds to confirm, from when it shows
 M.WARNING = 6 -- with this many seconds left, the bar of the time left flashes
