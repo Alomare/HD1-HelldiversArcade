@@ -10,8 +10,8 @@ New, changed or removed features, one line each, brief and direct. The section f
 - Changed: Shock elites only arc while a Helldiver out of the drop pod is within range, so a landing player is no longer hit, and their arcs do half damage to other enemies.
 - Changed: the Arcade screen's three panels span the screen's width, staying within the middle 16:9 on wider screens.
 - Changed: the Mission Preview shows the planet's name in the map's top right corner.
-- Changed: the difficulty bar sits inside the difficulty selector, under its name.
-- Changed: the map's upgrade panel spaces its badges more closely, and shows the rerolls and banishes in larger text under the upgrades.
+- Changed: the difficulty bar sits inside the difficulty selector, under the name.
+- Changed: the upgrade panel of the map spaces the badges more closely, and shows the rerolls and banishes in larger text under the upgrades.
 - Changed: an upgrade card's partner icons are a tenth bigger and centred between the badge and the card's edge.
 - Changed: an elite's icon is half again as big with Better HUD 1.16.1.
 
@@ -19,13 +19,13 @@ New, changed or removed features, one line each, brief and direct. The section f
 
 - New: a weapon dropped on the ground vanishes after a minute. Weapons in the crate of a stratagem stay.
 - New: on a defeat, the combat music stops and the game's defeat music plays.
-- Changed: the first alarm is the enemy's own, with its scream or flare. The Arcade keeps the alarm on from then.
+- Changed: the first alarm is the one the enemy raises, with the scream or flare. The Arcade keeps the alarm on from then.
 - Changed: the end-of-run summary shows at once instead of 2 seconds after the end.
-- Changed: an upgrade card shows the partner icons of an evolution to the right of its badge, a fifth bigger.
+- Changed: an upgrade card shows the partner icons of an evolution to the right of the badge, a fifth bigger.
 - Changed: a Bulwark elite's dome rides on the elite instead of being placed again as it walks. Anyone walks through it, and shots from outside stop on it.
 - Changed: the top bar's level and clock and the end-of-run summary use the body font instead of the title font.
 - Removed: chests.
-- Changed: an elite's health bar shows all the time, with an icon for its kind in the middle of the bar, in place of the colored glow under it and the name over it. Needs Better HUD 1.16.0.
+- Changed: the health bar of an elite shows all the time, with an icon for the kind in the middle of the bar, in place of the colored glow under the elite and the name over it. Needs Better HUD 1.16.0.
 - Changed: needs Obsidian API 1.48.0.
 
 ## 1.0.0
