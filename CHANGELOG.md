@@ -4,26 +4,26 @@ New, changed or removed features, one line each, brief and direct. The section f
 
 ## 1.2.0
 
-- New: the debug page's Elite tools: base unit, count and distance for spawned elites, a random kind, pausing the run's elite spawns, the next elite now, killing or removing every elite, breaking the Bulwark dome, and a status line.
-- Changed: Cluster Grenade, Carpet Bombing, Sweet Liberty and Chain Reaction blasts show the fireball and play the sound of the player's grenade, on every machine. Before, they did damage unseen.
-- Changed: the first alarm is the enemy's own again. The host's first moments of a run no longer count as taking over from a host that left, which raised the alarm at once.
-- Changed: Shock elites only arc while a Helldiver out of the drop pod is within range, so a landing player is no longer hit, and their arcs do half damage to other enemies.
-- Changed: the Arcade screen's three panels span the screen's width, staying within the middle 16:9 on wider screens.
-- Changed: the Mission Preview shows the planet's name in the map's top right corner.
+- New: Elite tools on the debug page: base unit, count and distance for spawned elites, a random kind, pausing elite spawns for the run, the next elite now, killing or removing every elite, breaking the Bulwark dome, and a status line.
+- Changed: Cluster Grenade, Carpet Bombing, Sweet Liberty and Chain Reaction blasts show the fireball and play the sound of a player grenade, on every machine. Before, they did damage unseen.
+- Changed: the first alarm is again the one the enemy raises. The first moments of a run for the host no longer count as taking over from a host that left, which raised the alarm at once.
+- Changed: Shock elites only arc while a Helldiver out of the drop pod is within range, so a landing player is no longer hit, and the arcs do half damage to other enemies.
+- Changed: the three panels of the Arcade screen span the width of the screen, staying within the middle 16:9 on wider screens.
+- Changed: the Mission Preview shows the planet name in the top right corner of the map.
 - Changed: the difficulty bar sits inside the difficulty selector, under the name.
 - Changed: the upgrade panel of the map spaces the badges more closely, and shows the rerolls and banishes in larger text under the upgrades.
-- Changed: an upgrade card's partner icons are a tenth bigger and centred between the badge and the card's edge.
-- Changed: an elite's icon is half again as big with Better HUD 1.16.1.
+- Changed: the partner icons on an upgrade card are a tenth bigger and centred between the badge and the edge of the card.
+- Changed: the icon of an elite is half again as big with Better HUD 1.17.0.
 
 ## 1.1.0
 
 - New: a weapon dropped on the ground vanishes after a minute. Weapons in the crate of a stratagem stay.
-- New: on a defeat, the combat music stops and the game's defeat music plays.
+- New: on a defeat, the combat music stops and the defeat music of the game plays.
 - Changed: the first alarm is the one the enemy raises, with the scream or flare. The Arcade keeps the alarm on from then.
 - Changed: the end-of-run summary shows at once instead of 2 seconds after the end.
 - Changed: an upgrade card shows the partner icons of an evolution to the right of the badge, a fifth bigger.
-- Changed: a Bulwark elite's dome rides on the elite instead of being placed again as it walks. Anyone walks through it, and shots from outside stop on it.
-- Changed: the top bar's level and clock and the end-of-run summary use the body font instead of the title font.
+- Changed: the dome of a Bulwark elite rides on the elite instead of being placed again as it walks. Anyone walks through it, and shots from outside stop on it.
+- Changed: the level and clock in the top bar and the end-of-run summary use the body font instead of the title font.
 - Removed: chests.
 - Changed: the health bar of an elite shows all the time, with an icon for the kind in the middle of the bar, in place of the colored glow under the elite and the name over it. Needs Better HUD 1.16.0.
 - Changed: needs Obsidian API 1.48.0.
@@ -35,5 +35,5 @@ New, changed or removed features, one line each, brief and direct. The section f
 - New: kills drop research samples, and every level-up offers upgrade cards (common, rare, legendary, perk and evolution) and, every few levels, stratagems, with rerolls and banishes.
 - New: upgrades for weapons, movement, health and armor, grenades, melee and stratagems, and evolutions that join two upgrades into one with a new effect.
 - New: chests from elites, bosses and rare kills, with upgrades for every player in the squad.
-- New: the shuttle can be called after 15 minutes, and a run ends with a summary: the result, the time survived, the level, the factions, the bosses and each player's damage by source.
+- New: the shuttle can be called after 15 minutes, and a run ends with a summary: the result, the time survived, the level, the factions, the bosses and the damage of each player by source.
 - New: up to four players, as an Obsidian expansion: everyone in the lobby runs the mod for an arcade mission, and the Galactic Campaign stays as it was.
