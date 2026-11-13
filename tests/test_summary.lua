@@ -213,6 +213,32 @@ test("a_wipe_waits_for_the_summary_and_somebody_up_again_cancels_it", function()
 	eq(game.ended, true, "the mission ends on the next step")
 end)
 
+test("a_reinforcement_just_after_the_last_death_cancels_the_defeat", function()
+	local h = { allowed = true }
+	local hook = hooked(h)
+	local game, original = fake_game()
+	local respawning = false
+	local function original_respawn(self)
+		-- The game stops its countdown while a player respawns, and doesn't set it back.
+		if respawning then return end
+		original(self)
+	end
+	game.players = { { player_go = { exists = function() return true end }, spawn_timer = 0 } }
+	game.alive = false
+	hook(original_respawn, game)
+	eq(h.kind, "defeated")
+	respawning = true
+	game.players[1].spawn_timer = 4
+	hook(original_respawn, game)
+	eq(h.kind, nil, "cancelled while the player comes back, before the body is up")
+	for _ = 1, 50 do hook(original_respawn, game) end
+	eq(h.kind, nil, "no new defeat while the player is on the way")
+	eq(game.ended, false)
+	game.players[1].spawn_timer = 0
+	game.num_respawning_players = 1
+	eq(summary.respawning(game), true, "the game's count")
+end)
+
 test("the_hold_leaves_aborts_other_steps_and_early_runs_alone", function()
 	local h = { allowed = true }
 	local hook = hooked(h)

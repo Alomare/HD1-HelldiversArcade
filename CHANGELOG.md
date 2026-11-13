@@ -2,6 +2,18 @@
 
 New, changed or removed features, one line each, brief and direct. The section for a release becomes the release notes.
 
+## Next
+
+- New: a 3 second countdown after the landing, drawn like the hellpod launch countdown. At its end the alarm goes on and stays on. No enemy raises an alarm of its own, and every enemy knows where the squad is and comes for it.
+- New: a Fire elite leaves a wide fire where it dies, for 15 seconds.
+- Changed: Noxious and Fire elites move faster, by half of the Swift boost.
+- Changed: toxic ground from a Noxious elite shows a poison cloud on every machine.
+- Changed: Cluster Grenade blasts land closer together (3.5 m instead of 6 m) and follow each other faster (0.15 s instead of 0.3 s).
+- Changed: upgrades already held come up less often in the cards (twice as likely as a new one instead of three times).
+- Changed: a ground full of samples (300) sets off the sample vacuum early instead of merging the oldest.
+- Changed: the Script Profiler of Obsidian API shows the parts of the frame of a run one by one.
+- Fixed: a reinforcement that came just as the last player died could leave the defeat summary up for good. The summary now closes as soon as a player is on the way back.
+
 ## 1.2.0
 
 - New: Elite tools on the debug page: base unit, count and distance for spawned elites, a random kind, pausing elite spawns for the run, the next elite now, killing or removing every elite, breaking the Bulwark dome, and a status line.

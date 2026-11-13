@@ -2,10 +2,10 @@
 -- plays an alert (a scout's scream, a flare) and a few seconds later starts one of the game's
 -- encounters (EnemyUtility.check_alarm). Each alarm while an encounter runs adds more of the game's
 -- waves to it (EncounterManager.start_encounter), so here they came on top of the director's, and the
--- alerts never stopped. In a run the first alarm is the game's own, as in any mission: an enemy that
--- spots the squad screams or fires a flare, and the encounter it starts is the alarm. From then on the
--- alarm is the run's: the host raises it again whenever it goes quiet, so it stays on, and an enemy that
--- spots the squad attacks at once, with no alert, scream or flare, and starts no encounter of its own.
+-- alerts never stopped. In a run no enemy raises an alarm: the alarm is the run's. After the landing a
+-- countdown runs (rules.countdown), and at its end the host raises the alarm, then raises it again
+-- whenever it goes quiet, so it stays on. Every enemy knows where the squad is and goes for it at once,
+-- with no alert, scream or flare, and starts no encounter of its own.
 local level = obsidian.module("src/level")
 
 local M = {}
@@ -38,6 +38,16 @@ function M.on_natural()
 	if obsidian.log then obsidian.log("arcade: the first alarm, raised by the enemy") end
 end
 
+-- Whether an enemy in a run knows where the squad is: always, once it has a player to go for.
+function M.aware(state, seen)
+	if seen then return true end
+	local target = type(state) == "table" and state.closest_target_unit
+	if target == nil then return false end
+	local U = rawget(_G, "Unit")
+	local ok, alive = pcall(U and U.alive or function() return false end, target)
+	return ok and alive == true
+end
+
 -- What an enemy's alarm check does in a run, given whether it noticed the squad: one that did stops
 -- patrolling, as it would once the alert was over, so the next update goes for the target.
 function M.notice(state, noticed)
@@ -62,8 +72,9 @@ function M.install()
 	-- Until the first alarm, all of it is the game's.
 	obsidian.hook("EnemyUtility", "check_alert", function(original, state, ...)
 		local seen = original(state, ...)
-		if not (level.active and not waiting and seen and type(state) == "table") then return seen end
-		M.notice(state, true)
+		if not (level.active and not waiting and type(state) == "table") then return seen end
+		-- Every enemy knows where the squad is, seen or not, and goes for it with no alert.
+		M.notice(state, M.aware(state, seen))
 		return false
 	end)
 	-- An alert under way when the alarm became the run's ends at once.

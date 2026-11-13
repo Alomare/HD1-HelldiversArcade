@@ -27,6 +27,19 @@ function M.add(v, amount, need)
 	return false
 end
 
+-- Goes off before it's full: the ground holds as many samples as it may (rules.ORB_LIMIT). It starts
+-- over with a target from the level of `need`.
+function M.force(v, need)
+	v.got = 0
+	v.seq = v.seq + 1
+	v.target = target_for(need)
+end
+
+-- Whether the samples on the ground call for the vacuum now: `waiting` not flying to anyone yet.
+function M.full_ground(waiting)
+	return waiting >= rules.ORB_LIMIT
+end
+
 -- How full it is, from 0 to 1. Before the first sample, `need` (the current level's) stands in.
 function M.fraction(v, need)
 	local target = v.target or target_for(need)

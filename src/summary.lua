@@ -313,20 +313,33 @@ function M.gate(h, v)
 	return act
 end
 
--- After the step: everyone dead and the game counting down opens a defeat; somebody back up while one
--- is held cancels it. "defeated", "cancel" or nil.
+-- After the step: everyone dead and the game counting down opens a defeat; somebody back up, or on the
+-- way back (a reinforcement that came just as the last player died: the game stops its countdown while a
+-- player respawns, without setting it back), while one is held cancels it. "defeated", "cancel" or nil.
+-- v.respawning: a player's spawn timer runs, or the game counts players respawning.
 function M.after(h, v)
 	if v.over or v.abort or not h.allowed then return nil end
 	local timer = tonumber(v.timer) or 0
-	if not h.kind and timer < M.WIPE_BELOW then
+	if not h.kind and timer < M.WIPE_BELOW and not v.respawning then
 		h.kind, h.fresh = "defeated", true
 		return "defeated"
 	end
-	if h.kind == "defeated" and not h.released and timer >= 3 then
+	if h.kind == "defeated" and not h.released and (timer >= 3 or v.respawning) then
 		h.kind = nil
 		return "cancel"
 	end
 	return nil
+end
+
+-- Whether a player is on the way back, as StateGame.update_host tells it before counting down: a player
+-- with a spawn timer running, or players respawning.
+function M.respawning(game)
+	if (tonumber(game.num_respawning_players) or 0) > 0 then return true end
+	for _, p in ipairs(type(game.players) == "table" and game.players or {}) do
+		local go = p.player_go
+		if go and go:exists() and (tonumber(p.spawn_timer) or 0) > 0 then return true end
+	end
+	return false
 end
 
 -- The hook on the host's update. get(): the run's hold table, or nil outside a run.
@@ -336,8 +349,9 @@ function M.install(get)
 		if not h or self.update_host_current_step ~= 0 then return original(self, ...) end
 		local mm = self.mission_manager
 		local function view()
+			local ok, back = pcall(M.respawning, self)
 			return { extraction_done = type(mm) == "table" and mm.extraction_done == true, timer = self.game_over_timer, abort = self.abort_mission == true,
-				over = self.game_state == "game_over" }
+				over = self.game_state == "game_over", respawning = ok and back == true }
 		end
 		local act = M.gate(h, view())
 		if act.timer then self.game_over_timer = act.timer end

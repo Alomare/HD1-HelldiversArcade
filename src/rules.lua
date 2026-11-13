@@ -8,8 +8,22 @@ M.SEED_PARAMS = 10000000
 -- Heat, the threat readout beside the XP bar, is archived: its code stays, off.
 M.SHOW_HEAT = false
 
--- Seconds from the drop to the director's first spawn (the game's alarm goes on at the landing, src/
--- alarm.lua), and how long until the shuttle can be called. Nothing makes the
+-- The start of a run (src/alarm.lua): once the squad has landed (the hellpod's 5.4 s), a COUNTDOWN of
+-- seconds, drawn as the game's hellpod launch countdown; at its end the run raises the alarm. No enemy
+-- raises one of its own at any time.
+M.COUNTDOWN_FROM = 5.4
+M.COUNTDOWN = 3
+M.ALARM_AT = M.COUNTDOWN_FROM + M.COUNTDOWN
+
+-- Whole seconds left on the countdown at `time` (the run's clock), or nil outside it, and how far into
+-- the second it is, 1 at its start and 0 at its end.
+function M.countdown(time)
+	if time < M.COUNTDOWN_FROM or time >= M.ALARM_AT then return nil end
+	local left = M.ALARM_AT - time
+	return math.ceil(left), left - math.floor(left)
+end
+
+-- Seconds from the drop to the director's first spawn, and how long until the shuttle can be called. Nothing makes the
 -- squad call it: the fight goes on, and the director's later factions and bosses are for those who stay.
 M.ALARM_AFTER = 20
 -- After the cards appear, presses and clicks wait this long (real seconds), so a shot fired just before
@@ -140,7 +154,7 @@ M.EVOLUTION_CHANCE = 0.5
 M.RARITY_FLOOR = 40 -- common never drops below this weight
 -- Within a rarity, an upgrade the player already holds is this many times as likely as a new one, so a
 -- build comes together.
-M.HELD_WEIGHT = 3
+M.HELD_WEIGHT = 2
 
 -- The share of kills that drop a sample. Every machine makes its own samples, so the roll comes from
 -- where the enemy fell, in cells wide enough that the machines agree on it, not from a random number.

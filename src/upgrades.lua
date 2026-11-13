@@ -73,8 +73,8 @@ M.BATTERY_FIRST = 12
 M.BATTERY_JUMP = 6
 -- Cluster Grenade (src/grenades.lua): each stack adds one more blast of the grenade's own explosion, up
 -- to CLUSTER_RADIUS metres around it, CLUSTER_DELAY seconds after the one before.
-M.CLUSTER_RADIUS = 6
-M.CLUSTER_DELAY = 0.3
+M.CLUSTER_RADIUS = 3.5
+M.CLUSTER_DELAY = 0.15
 -- Deep Pockets (src/grenades.lua): +1 grenade carried per stack over the game's 2 (the count travels as
 -- 4 bits, so 15 at most), and one grenade back every POCKETS_SECONDS, 2 s sooner per stack after the first.
 M.POCKETS_SECONDS = 16

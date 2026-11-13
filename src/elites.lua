@@ -10,10 +10,12 @@
 -- binds the nearest unit of the right type to it (M.match).
 --
 -- Kinds:
---   fire     leaves the flamethrower's burning ground behind it as it moves
+--   fire     leaves the flamethrower's burning ground behind it as it moves, a wide fire where it dies,
+--            and moves HALF_SWIFT times as fast
 --   shock    arcs every SHOCK_EVERY seconds to the nearest units within SHOCK_RANGE, players and enemies,
 --            while a Helldiver out of the drop pod is within SHOCK_RANGE; its own side takes half
---   noxious  its hits poison like a Stalker's, and on death it leaves toxic ground for POOL_SECONDS
+--   noxious  its hits poison like a Stalker's, on death it leaves toxic ground for POOL_SECONDS, and it
+--            moves HALF_SWIFT times as fast
 --   bulwark  carries a shield dome on itself: units walk through, shots from outside stop on it
 --   swift    moves SWIFT_SPEED times as fast and doesn't stagger from hits
 --   brood    splits into BROOD_COUNT small enemies of its faction on death
@@ -89,6 +91,19 @@ M.DOME_LOOSE = { "c_shield", "c_shield_inner", "g_shield_inner" }
 M.DOME_RIDE = 4 -- metres between a new dome and the Bulwark elite it rides on
 M.DOME_LAG = 0.5 -- metres the outer shell may trail the dome before it's made again where the dome is
 M.SWIFT_SPEED = 1.6
+-- Noxious and Fire: half of Swift's boost.
+M.HALF_SWIFT = 1 + (M.SWIFT_SPEED - 1) / 2
+M.FASTER = { swift = M.SWIFT_SPEED, noxious = M.HALF_SWIFT, fire = M.HALF_SWIFT }
+-- Fire's death: the flamethrower's ground at the spot and in a ring round it, laid again as it burns out.
+M.BLAZE_RING = 6
+M.BLAZE_RADIUS = 2.4 -- metres
+M.BLAZE_SECONDS = 15
+M.BLAZE_EVERY = 4.5
+-- Toxic ground has no look of its own: the game's poison look puffs over it, on every machine.
+M.CLOUD_EFFECT = "effects/generated/status_poison" -- in mission_common
+M.CLOUD_EVERY = 0.6
+M.CLOUD_SPOTS = 6
+M.CLOUD_RADIUS = 2.2
 M.SWIFT_IMMUNE = { "generic_stun", "knockdown" } -- bullet_stun is the stagger of every hit
 M.BROOD_COUNT = 3
 
@@ -103,7 +118,7 @@ M.ARCS_FRESH = 1.5
 function M.new()
 	return { next_at = nil, alive = {}, kinds = setmetatable({}, { __mode = "k" }), looks = {}, pools = {},
 		arcs = { seq = 0, events = {} }, seen_arcs = {}, share_in = 0, shared = {}, last_death = -math.huge,
-		clock = 0, bodies = {}, landing_told = {} }
+		clock = 0, bodies = {}, landing_told = {}, clouds = {} }
 end
 
 -- The debug page's choices (src/debug.lua), kept across runs. base: "home" for the mission's own
@@ -183,8 +198,23 @@ function M.fire_due(f, pos, now)
 end
 
 -- The toxic ground left by a Noxious elite: due now, and how many more after.
-function M.new_pool(pos, now)
-	return { x = pos.x, y = pos.y, z = pos.z or 0, next = now, left = math.ceil(M.POOL_SECONDS / M.POOL_EVERY) }
+function M.new_pool(pos, now, kind)
+	if kind == "fire" then
+		return { kind = "fire", x = pos.x, y = pos.y, z = pos.z or 0, next = now, every = M.BLAZE_EVERY, left = math.ceil(M.BLAZE_SECONDS / M.BLAZE_EVERY) }
+	end
+	return { kind = "toxic", x = pos.x, y = pos.y, z = pos.z or 0, next = now, every = M.POOL_EVERY, left = math.ceil(M.POOL_SECONDS / M.POOL_EVERY) }
+end
+
+-- The spots a pool lays its units on: the toxic one in the middle, the fire in the middle and a ring.
+function M.pool_spots(p)
+	local out = { { x = p.x, y = p.y, z = p.z } }
+	if p.kind == "fire" then
+		for i = 1, M.BLAZE_RING do
+			local a = (i - 1) / M.BLAZE_RING * 2 * math.pi
+			out[#out + 1] = { x = p.x + math.cos(a) * M.BLAZE_RADIUS, y = p.y + math.sin(a) * M.BLAZE_RADIUS, z = p.z }
+		end
+	end
+	return out
 end
 
 function M.pools_due(pools, now)
@@ -193,7 +223,7 @@ function M.pools_due(pools, now)
 		local p = pools[i]
 		if now >= p.next then
 			out[#out + 1] = p
-			p.left, p.next = p.left - 1, now + M.POOL_EVERY
+			p.left, p.next = p.left - 1, now + (p.every or M.POOL_EVERY)
 			if p.left <= 0 then table.remove(pools, i) end
 		end
 	end
@@ -658,18 +688,20 @@ local function ride_domes(e)
 	end
 end
 
-local function swift(el, unit, dt)
-	if not el.immune then
+local function faster(el, unit, dt)
+	local speed = M.FASTER[el.kind]
+	if not speed then return end
+	if el.kind == "swift" and not el.immune then
 		el.immune = true
 		for _, name in ipairs(M.SWIFT_IMMUNE) do command(unit, "status", "add_immunity_element", name) end
 	end
-	el.swift_in = el.swift_in - dt
+	el.swift_in = (el.swift_in or 0) - dt
 	if el.swift_in > 0 then return end
 	el.swift_in = 0.5
 	-- A slow sets the mover's multiplier below 1 and back to 1 when it ends: from 1, the elite's own.
 	local ok, mover = pcall(g("EntityAux").state_master, unit, "navmesh_mover")
 	local now = ok and type(mover) == "table" and mover.slow_multiplier or 1
-	if now == 1 then pcall(g("EntityAux").queue_command_master_interface, unit, "movement", "set_slow", M.SWIFT_SPEED) end
+	if now == 1 then pcall(g("EntityAux").queue_command_master_interface, unit, "movement", "set_slow", speed) end
 end
 
 -- Host, every frame of play: the schedule, and what each kind does.
@@ -693,11 +725,51 @@ local function host_update(e, run, dt, squad, factions, draw)
 					end
 				end
 				if el.kind == "bulwark" then bulwark(el, pos, now) end
-				if el.kind == "swift" then swift(el, unit, dt) end
+				faster(el, unit, dt)
 			end
 		end
 	end
-	for _, p in ipairs(M.pools_due(e.pools, now)) do spawn_entity(M.POOL_UNIT, p) end
+	for _, p in ipairs(M.pools_due(e.pools, now)) do
+		local unit = p.kind == "fire" and M.FIRE_UNIT or M.POOL_UNIT
+		for _, spot in ipairs(M.pool_spots(p)) do spawn_entity(unit, spot) end
+	end
+end
+
+-- Every machine: the poison look over each toxic ground, for as long as it lasts.
+function M.new_cloud(pos, clock)
+	return { x = pos.x, y = pos.y, z = pos.z or 0, until_at = clock + M.POOL_SECONDS, next = clock }
+end
+
+-- The spots due a puff at `clock`, and the clouds that are over go.
+function M.clouds_due(clouds, clock)
+	local out = {}
+	for i = #clouds, 1, -1 do
+		local c = clouds[i]
+		if clock >= c.until_at then
+			table.remove(clouds, i)
+		elseif clock >= c.next then
+			c.next = clock + M.CLOUD_EVERY
+			c.turn = (c.turn or 0) + 1
+			out[#out + 1] = { x = c.x, y = c.y, z = c.z }
+			for k = 1, M.CLOUD_SPOTS do
+				local a = (k + c.turn * 0.5) / M.CLOUD_SPOTS * 2 * math.pi
+				local r = M.CLOUD_RADIUS * (k % 2 == 0 and 1 or 0.55)
+				out[#out + 1] = { x = c.x + math.cos(a) * r, y = c.y + math.sin(a) * r, z = c.z }
+			end
+		end
+	end
+	return out
+end
+
+local function puff(spots)
+	if #spots == 0 or not api.game.in_mission() then return end
+	local st = api.game.state()
+	local proxy = type(st) == "table" and st.world_proxy
+	if not proxy then return end
+	local ok, world = pcall(proxy.get_world, proxy)
+	if not (ok and world) then return end
+	local W, V = g("World"), g("Vector3")
+	for _, s in ipairs(spots) do pcall(W.create_particles, world, M.CLOUD_EFFECT, V(s.x, s.y, s.z)) end
 end
 
 -- Better HUD keeps an elite's health bar showing while it lives, with its kind's icon in the middle of
@@ -785,6 +857,8 @@ function M.update(run, dt, dt_real, squad, factions, draw)
 	if host then note_bodies(e) end
 	if host and not run.choice then host_update(e, run, dt, squad, factions, draw) end
 	share(e, run, host, dt_real)
+	e.clouds = e.clouds or {}
+	puff(M.clouds_due(e.clouds, e.clock))
 	looks(e)
 	ride_domes(e)
 end
@@ -800,7 +874,7 @@ function M.on_killed(unit, pos, faction)
 		e.alive[unit] = nil
 		e.last_death = e.now or 0
 		drop_dome(el)
-		if kind == "noxious" then e.pools[#e.pools + 1] = M.new_pool(pos, e.now or 0) end
+		if kind == "noxious" or kind == "fire" then e.pools[#e.pools + 1] = M.new_pool(pos, e.now or 0, kind) end
 		if kind == "brood" then
 			local small = M.SMALL[el.faction or faction]
 			if small then
@@ -808,6 +882,10 @@ function M.on_killed(unit, pos, faction)
 				if not ok then obsidian.log("arcade: no brood: " .. tostring(why)) end
 			end
 		end
+	end
+	if kind == "noxious" and pos then
+		e.clouds = e.clouds or {}
+		e.clouds[#e.clouds + 1] = M.new_cloud(pos, e.clock or 0)
 	end
 	obsidian.log("arcade: a " .. kind .. " elite fell")
 	return kind

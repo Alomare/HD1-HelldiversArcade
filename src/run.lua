@@ -52,6 +52,9 @@ local show_hud, share_summary
 
 local function g(name) return rawget(_G, name) end
 
+-- Each part of the frame shows apart in the Script Profiler of Obsidian API (obsidian.profiler.measure).
+local measure = obsidian.profiler and obsidian.profiler.measure or function(_, fn, ...) return fn(...) end
+
 local function vec(t) return g("Vector3")(t.x, t.y, t.z or 0) end
 
 local function plain(v)
@@ -208,8 +211,8 @@ function M.start(mission_seed, difficulty)
 		choice = nil, shared_at = 0, local_list = {}, looks = {}, liberty_peers = {},
 	}
 	run.sync = sync.new(mission_seed, run.draws:random(1, 2 ^ 30))
-	-- The first alarm is the enemy's own (src/alarm.lua).
-	alarm.wait_natural(run.game_alarm)
+	-- No enemy raises an alarm in a run: the run raises it after the countdown (src/alarm.lua).
+	alarm.skip_natural()
 	elites.state = elites.new()
 	dive.clear()
 	run.env = env_for(run)
@@ -1506,7 +1509,7 @@ function M.update()
 	local everyone = all_players()
 	local squad = centre(everyone)
 	run.squad = squad or run.squad
-	local ok_b, err_b = pcall(bosses.update, dt_real, squad)
+	local ok_b, err_b = pcall(measure, "bosses", bosses.update, dt_real, squad)
 	if not ok_b then obsidian.log("arcade: bosses: " .. tostring(err_b)) end
 
 	-- The host's hold saw the mission end, or took a defeat back (StateGame.update_host).
@@ -1519,7 +1522,7 @@ function M.update()
 	end
 	if run.summary and not run.hold.kind and not run.summary.closed then cancel_summary(run) end
 
-	share(run, dt_real)
+	measure("share", share, run, dt_real)
 	input.update(dt_real)
 	-- While the summary is up, the run stands still: no clock, spawns, timers or samples.
 	if run.summary then
@@ -1529,21 +1532,21 @@ function M.update()
 	end
 	update_looks(run, dt_real)
 	run.dropped = run.dropped or drops.new()
-	local ok_d, err_d = pcall(drops.update, run.dropped, dt_real, api.world)
+	local ok_d, err_d = pcall(measure, "dropped weapons", drops.update, run.dropped, dt_real, api.world)
 	if not ok_d then obsidian.log("arcade: dropped weapons: " .. tostring(err_d)) end
 	run.dt_real = dt_real
-	sync_players(run, run.choice and 0 or dt_game, dt_real)
-	pcall(grenades.update, run.grenades, dt_game)
+	measure("players", sync_players, run, run.choice and 0 or dt_game, dt_real)
+	pcall(measure, "grenades", grenades.update, run.grenades, dt_game)
 	-- Chain Reaction's blasts and Napalm Needles' clouds.
-	local ok_c, err_c = pcall(step_chain, run, dt_game)
+	local ok_c, err_c = pcall(measure, "chain reaction", step_chain, run, dt_game)
 	if not ok_c then obsidian.log("arcade: chain reaction: " .. tostring(err_c)) end
-	pcall(fight.step_clouds, fight.state, run.time, api.enemies.near, function(enemy, statuses)
+	pcall(measure, "clouds", fight.step_clouds, fight.state, run.time, api.enemies.near, function(enemy, statuses)
 		for _, s in ipairs(statuses) do api.enemies.apply_status(enemy, s) end
 	end)
 	-- Elusive Tactics' stuns still to come.
 	pcall(dive.step, api, run.time)
 	-- Elites: the host's spawns and kinds, every machine's looks.
-	local ok_el, err_el = pcall(elites.update, run, run.choice and 0 or dt_game, dt_real, squad,
+	local ok_el, err_el = pcall(measure, "elites", elites.update, run, run.choice and 0 or dt_game, dt_real, squad,
 		director.factions(level.home or "bugs", run.time / 60, run.seed), function() return run.director.rng:random() end)
 	if not ok_el then obsidian.log("arcade: elites: " .. tostring(err_el)) end
 
@@ -1634,8 +1637,8 @@ function M.update()
 					obsidian.log("arcade: host now, the director picks up at " .. clock(run.time))
 				end
 			end
-			-- The game's alarm, kept on once the enemy first raises it (src/alarm.lua).
-			if squad then
+			-- The game's alarm: the run raises it as the countdown ends, and keeps it on (src/alarm.lua).
+			if squad and run.time >= rules.ALARM_AT then
 				local st = api.game.state()
 				local first = not run.game_alarm.raised
 				if alarm.update(run.game_alarm, type(st) == "table" and st.encounter_manager, vec(squad), dt_game) then
@@ -1665,8 +1668,8 @@ function M.update()
 					end
 					return by_key[key] or 0
 				end
-				local out = director.update(run.director, dt_game, #everyone, alive, alive_of)
-				spawn(run, out.spawns, squad)
+				local out = measure("director", director.update, run.director, dt_game, #everyone, alive, alive_of)
+				measure("spawns", spawn, run, out.spawns, squad)
 				if #out.spawns > 0 then
 					local n, kinds = 0, {}
 					for _, sp in ipairs(out.spawns) do n = n + sp.count kinds[#kinds + 1] = sp.count .. " " .. sp.key end
@@ -1684,7 +1687,7 @@ function M.update()
 		for i, l in ipairs(run.local_list) do if l.unit == p.unit then n = i end end
 		players[#players + 1] = { pos = p.pos, is_local = p.is_local, magnet = n and player_state(run, n).stats.magnet or 1, n = n, unit = p.unit }
 	end
-	local _, by, picked = orbs.update(run.orbs, dt_game, players)
+	local _, by, picked = measure("orbs", orbs.update, run.orbs, dt_game, players)
 	run.pickup_sound_in = math.max((run.pickup_sound_in or 0) - dt_real, 0)
 	local gained = 0
 	for i, amount in pairs(by) do
@@ -1704,7 +1707,14 @@ function M.update()
 	-- The vacuum fills with what this machine's players collect, and goes off around the main player.
 	local _, _, need = xp.level_of(sync.team_xp(run.sync))
 	local main = run.local_list[1]
-	if gained > 0 and vacuum.add(run.vacuum, gained, need) and main and main.pos then
+	-- A ground full of samples calls the vacuum early, so none have to merge away.
+	local waiting = 0
+	for _, orb in ipairs(run.orbs.list) do
+		if not orb.pulled then waiting = waiting + 1 end
+	end
+	local early = main and main.pos and vacuum.full_ground(waiting)
+	if early then vacuum.force(run.vacuum, need) end
+	if (early or (gained > 0 and vacuum.add(run.vacuum, gained, need))) and main and main.pos then
 		orbs.pull(run.orbs, main.pos, rules.VACUUM_RADIUS)
 		pcall(api.lobby.share, "vacuum", vacuum.encode(run.vacuum, run.sync.mission, run.sync.run, main.pos, run.time))
 		grant_all(run, "rerolls", 1)
@@ -1736,6 +1746,7 @@ function M.draw(kit, paused)
 		return
 	end
 	if run.exiting then return end
+	if not paused then pcall(M.draw_countdown, kit, run) end
 	local total = sync.team_xp(run.sync)
 	local lvl, into, need = xp.level_of(total)
 	-- Over the darkened screen while choosing. Heat and the bar make way for the objectives at the right
@@ -1757,16 +1768,36 @@ function M.draw(kit, paused)
 	-- The pause menu has the screen to itself, beside the codex.
 	if not paused or run.choice then M.draw_bar(kit, run, x, y, w, heat_x, hud_layer, lvl, into, need) end
 	kit:layer(5)
-	if samples.sync(api.world, run.orbs.list, run.dt_real) then
+	if measure("draw: samples", samples.sync, api.world, run.orbs.list, run.dt_real) then
 		if not paused then M.draw_sample_flashes(kit, run) end
 	elseif not paused then
 		M.draw_orbs(kit, run)
 	end
 	if run.choice then
-		M.draw_choice(kit, run)
+		measure("draw: cards", M.draw_choice, kit, run)
 	else
-		M.draw_cards_hud(kit, run)
+		measure("draw: hud cards", M.draw_cards_hud, kit, run)
 	end
+end
+
+-- The countdown before the alarm, as the game draws the hellpod launch countdown on the ship
+-- (StateMenu.draw_countdown_timer_big): the "drop_menu_sequence_start" text in the heading font, white,
+-- in the middle of the screen, fading out over each second.
+function M.countdown_text(n)
+	local ok, text = pcall(api.catalog.text, "drop_menu_sequence_start")
+	if ok and type(text) == "string" and text:find("#SECONDS", 1, true) then
+		return (text:gsub("#SECONDS", tostring(n)))
+	end
+	return tostring(n)
+end
+
+function M.draw_countdown(kit, run)
+	local n, part = rules.countdown(run.time)
+	if not n then return end
+	local w, h = g("Application").resolution()
+	local x, y = kit:point(w / 2, h / 2)
+	kit:layer(cards.LAYER + 10)
+	kit:text(M.countdown_text(n), x, y, { font = "heading", align = "center", color = { 255, 255, 255, math.floor(255 * part) } })
 end
 
 -- Over each of this machine's players' HUD cards: health and armor, or the upgrades while the map is

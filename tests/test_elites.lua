@@ -206,6 +206,30 @@ test("fire_pools_follow_the_walk_and_toxic_ground_lasts", function()
 	eq(#pools, 0)
 end)
 
+test("a_fire_elite_dies_in_a_wide_fire_and_toxic_ground_shows", function()
+	local elites = load("elites", fake())
+	local blaze = elites.new_pool({ x = 10, y = 0 }, 0, "fire")
+	eq(#elites.pool_spots(blaze), 1 + elites.BLAZE_RING, "the middle and a ring")
+	near(elites.pool_spots(blaze)[2].x, 10 + elites.BLAZE_RADIUS)
+	local pools, laid = { blaze }, 0
+	for t = 0, 30, 0.5 do laid = laid + #elites.pools_due(pools, t) end
+	eq(laid, math.ceil(elites.BLAZE_SECONDS / elites.BLAZE_EVERY))
+	eq(#elites.pool_spots(elites.new_pool({ x = 0, y = 0 }, 0)), 1, "toxic ground is one unit")
+	local clouds = { elites.new_cloud({ x = 0, y = 0 }, 5) }
+	eq(#elites.clouds_due(clouds, 5), 1 + elites.CLOUD_SPOTS, "a puff on every spot")
+	eq(#elites.clouds_due(clouds, 5.1), 0, "not every frame")
+	eq(#elites.clouds_due(clouds, 5 + elites.CLOUD_EVERY), 1 + elites.CLOUD_SPOTS)
+	elites.clouds_due(clouds, 5 + elites.POOL_SECONDS)
+	eq(#clouds, 0, "gone with the ground")
+end)
+
+test("noxious_and_fire_elites_move_half_as_much_faster_as_swift", function()
+	local elites = load("elites", fake())
+	near(elites.FASTER.noxious - 1, (elites.SWIFT_SPEED - 1) / 2)
+	near(elites.FASTER.fire - 1, (elites.SWIFT_SPEED - 1) / 2)
+	eq(elites.FASTER.swift, elites.SWIFT_SPEED)
+end)
+
 test("the_dome_is_placed_once_and_comes_back_after_breaking", function()
 	local elites = load("elites", fake())
 	local el = {}

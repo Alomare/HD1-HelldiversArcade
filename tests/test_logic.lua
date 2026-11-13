@@ -172,9 +172,9 @@ test("an_upgrade_already_held_comes_up_more_often", function()
 			if u.id == "oxygenator" then held = held + 1 elseif u.id == "panic" then other = other + 1 end
 		end
 	end
-	eq(held > other * 2, true, "held " .. held .. " against " .. other)
-	eq(held < other * 4, true, "but not every row")
-	eq(rules.HELD_WEIGHT, 3)
+	eq(held > other * 1.4, true, "held " .. held .. " against " .. other)
+	eq(held < other * 2.8, true, "but not every row")
+	eq(rules.HELD_WEIGHT, 2)
 end)
 
 test("patch_up_comes_only_when_a_slot_cant_be_filled", function()
@@ -778,6 +778,16 @@ test("the_vacuum_fills_with_three_times_a_level_and_starts_over", function()
 	eq(vacuum.fraction(vacuum.new(), 0), 0, "no level to fill for")
 end)
 
+test("a_ground_full_of_samples_calls_the_vacuum_early", function()
+	eq(vacuum.full_ground(rules.ORB_LIMIT - 1), false)
+	eq(vacuum.full_ground(rules.ORB_LIMIT), true)
+	local v = vacuum.new()
+	vacuum.add(v, 10, 20)
+	vacuum.force(v, 20)
+	eq(v.seq, 1, "a new one for the other machines")
+	eq(vacuum.fraction(v, 20), 0, "empty again")
+end)
+
 test("the_vacuum_keeps_its_target_until_it_goes_off", function()
 	local v = vacuum.new()
 	eq(vacuum.add(v, 1, 10), false)
@@ -1073,6 +1083,30 @@ test("the_alarm_goes_on_once_and_again_only_when_quiet", function()
 	active = false
 	for _ = 1, 60 do alarm.update(a, em, { x = 0 }, 0.1) end
 	eq(starts, 2, "on again within a look once it went quiet")
+end)
+
+test("a_countdown_after_the_landing_then_the_alarm", function()
+	eq(rules.countdown(0), nil, "in the hellpod")
+	eq(rules.countdown(rules.COUNTDOWN_FROM), 3)
+	local n, part = rules.countdown(rules.COUNTDOWN_FROM + 0.25)
+	eq(n, 3)
+	near(part, 0.75)
+	eq(rules.countdown(rules.ALARM_AT - 0.1), 1)
+	eq(rules.countdown(rules.ALARM_AT), nil, "the alarm")
+	near(rules.ALARM_AT, 8.4)
+end)
+
+test("every_enemy_knows_where_the_squad_is", function()
+	rawset(_G, "Unit", { alive = function(u) return u == "player" end })
+	eq(alarm.aware({}, true), true, "seen")
+	eq(alarm.aware({ closest_target_unit = "player" }, false), true, "not seen, still known")
+	eq(alarm.aware({ closest_target_unit = "gone" }, false), false, "nobody to go for")
+	eq(alarm.aware({}, false), false)
+	local state = { patroling = true, alerted = true }
+	alarm.notice(state, alarm.aware({ closest_target_unit = "player" }, false))
+	eq(state.patroling, false)
+	eq(state.alerted, false)
+	rawset(_G, "Unit", nil)
 end)
 
 test("the_first_alarm_is_the_enemys_then_the_run_keeps_it_on", function()
