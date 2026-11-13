@@ -4,7 +4,7 @@ New, changed or removed features, one line each, brief and direct. The section f
 
 ## 1.3.0
 
-- New: a 3 second countdown after the landing, drawn like the hellpod launch countdown. At its end the alarm goes on and stays on. No enemy raises an alarm of its own, and every enemy knows where the squad is and comes for it.
+- New: a 3 second countdown after the landing, drawn like the hellpod launch countdown. At its end the alarm goes on and stays on. Enemies never raise an alarm, and every enemy knows where the squad is and comes for it.
 - New: a Fire elite leaves a wide fire where it dies, for 15 seconds.
 - Changed: Noxious and Fire elites move faster, by half of the Swift boost.
 - Changed: toxic ground from a Noxious elite shows a poison cloud on every machine.
