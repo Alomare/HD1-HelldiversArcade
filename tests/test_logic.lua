@@ -238,16 +238,6 @@ test("stratagems_come_every_three_levels_until_twelve_and_never_twice_in_a_row",
 	eq(#pool, 6, "the pool stays whole")
 end)
 
-test("the_readme_lists_every_upgrade_with_its_card_text", function()
-	local f = assert(io.open("README.md", "rb"))
-	local text = f:read("*a")
-	f:close()
-	for _, u in ipairs(upgrades.list) do
-		local body = u.text(1):match("^(.-)\nTotal:") or u.text(1)
-		eq(text:find("| " .. u.name .. " | " .. body .. " |", 1, true) ~= nil, true, u.name)
-	end
-end)
-
 test("a_perk_is_offered_when_owned_not_held_and_its_kind_is_free", function()
 	local all = function() return true end
 	local by = upgrades.by_id

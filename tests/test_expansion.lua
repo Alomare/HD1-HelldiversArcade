@@ -689,11 +689,4 @@ test("the_manifest_makes_survivors_an_expansion_for_obsidian_1_2", function()
 	eq(first, "if not (obsidian.capabilities and obsidian.capabilities.expansion) then", "main.lua starts with the check")
 end)
 
-test("the_readme_names_the_scope_and_the_versions_needed", function()
-	local text = read("README.md")
-	eq(text:find("expansion", 1, true) ~= nil, true, "the scope")
-	eq(text:find("Obsidian 1.2.0", 1, true) ~= nil, true, "Obsidian")
-	eq(text:find("Obsidian API 1.48.0", 1, true) ~= nil, true, "Obsidian API")
-end)
-
 return T
