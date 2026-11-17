@@ -2,6 +2,10 @@
 
 New, changed, fixed or removed features, one line each, brief and direct. The section for a release becomes the release notes.
 
+## 0.1.0
+
+- Changed: Helldivers Arcade is in Early Access, and the version numbers start again from 0.1.0. Installs of 1.3.0 or older are not offered this version as an update: remove the mod and install it again from the Store.
+
 ## 1.3.0
 
 - New: a 3 second countdown after the landing, drawn like the hellpod launch countdown. When it ends, the alarm goes on and stays on. Enemies never raise an alarm, and every enemy knows where the squad is and comes for it.
