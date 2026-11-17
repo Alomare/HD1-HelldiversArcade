@@ -2,6 +2,10 @@
 
 New, changed, fixed or removed features, one line each, brief and direct. The section for a release becomes the release notes.
 
+## 0.1.1
+
+- Changed: a shorter description in Obsidian and the store.
+
 ## 0.1.0
 
 - Changed: Helldivers Arcade is in Early Access, and the version numbers start again from 0.1.0. Installs of 1.3.0 or older are not offered this version as an update: remove the mod and install it again from the Store.
